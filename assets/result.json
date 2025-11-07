@@ -1,0 +1,248 @@
+{
+    "images": [
+        {
+            "width": 2560,
+            "height": 1440,
+            "id": 0,
+            "file_name": "images/0.png"
+        },
+        {
+            "width": 2560,
+            "height": 1440,
+            "id": 1,
+            "file_name": "images/1.png"
+        },
+        {
+            "width": 2560,
+            "height": 1440,
+            "id": 2,
+            "file_name": "images/2.png"
+        },
+        {
+            "width": 2560,
+            "height": 1440,
+            "id": 3,
+            "file_name": "images/3.png"
+        },
+        {
+            "width": 2560,
+            "height": 1440,
+            "id": 4,
+            "file_name": "images/4.png"
+        },
+        {
+            "width": 2560,
+            "height": 1440,
+            "id": 5,
+            "file_name": "images/5.png"
+        },
+        {
+            "width": 2560,
+            "height": 1440,
+            "id": 6,
+            "file_name": "images/6.png"
+        }
+    ],
+    "categories": [
+        {
+            "id": 0,
+            "name": "cancel_icon"
+        },
+        {
+            "id": 1,
+            "name": "lv_text"
+        },
+        {
+            "id": 2,
+            "name": "percentage_icon"
+        },
+        {
+            "id": 3,
+            "name": "quit_big_icon"
+        },
+        {
+            "id": 4,
+            "name": "quit_icon"
+        },
+        {
+            "id": 5,
+            "name": "retry_icon"
+        },
+        {
+            "id": 6,
+            "name": "rogue_dialog"
+        },
+        {
+            "id": 7,
+            "name": "rogue_gift"
+        },
+        {
+            "id": 8,
+            "name": "serum_icon"
+        },
+        {
+            "id": 9,
+            "name": "start_icon"
+        }
+    ],
+    "annotations": [
+        {
+            "id": 0,
+            "image_id": 0,
+            "category_id": 1,
+            "segmentation": [],
+            "bbox": [
+                118.0636168317864,
+                1368.1710862631787,
+                41.28098490621904,
+                28.071069736228925
+            ],
+            "ignore": 0,
+            "iscrowd": 0,
+            "area": 1158.8014060826883
+        },
+        {
+            "id": 1,
+            "image_id": 1,
+            "category_id": 0,
+            "segmentation": [],
+            "bbox": [
+                841.003802281369,
+                946.1292775665399,
+                38.93536121672987,
+                40.88212927756645
+            ],
+            "ignore": 0,
+            "iscrowd": 0,
+            "area": 1591.7604707310975
+        },
+        {
+            "id": 2,
+            "image_id": 1,
+            "category_id": 9,
+            "segmentation": [],
+            "bbox": [
+                1310.1749049429657,
+                946.1292775665399,
+                40.882129277566676,
+                38.9353612167298
+            ],
+            "ignore": 0,
+            "iscrowd": 0,
+            "area": 1591.7604707311036
+        },
+        {
+            "id": 3,
+            "image_id": 2,
+            "category_id": 5,
+            "segmentation": [],
+            "bbox": [
+                1648.912547528517,
+                1251.7718631178705,
+                44.77566539923937,
+                44.775665399239735
+            ],
+            "ignore": 0,
+            "iscrowd": 0,
+            "area": 2004.8602119446582
+        },
+        {
+            "id": 4,
+            "image_id": 2,
+            "category_id": 4,
+            "segmentation": [],
+            "bbox": [
+                2084.988593155894,
+                1253.7186311787073,
+                40.88212927756649,
+                38.93536121673001
+            ],
+            "ignore": 0,
+            "iscrowd": 0,
+            "area": 1591.7604707311048
+        },
+        {
+            "id": 5,
+            "image_id": 3,
+            "category_id": 3,
+            "segmentation": [],
+            "bbox": [
+                2322.494296577947,
+                1259.5589353612168,
+                75.92395437262348,
+                85.65779467680619
+            ],
+            "ignore": 0,
+            "iscrowd": 0,
+            "area": 6503.478494701384
+        },
+        {
+            "id": 6,
+            "image_id": 4,
+            "category_id": 2,
+            "segmentation": [],
+            "bbox": [
+                451.6147162797465,
+                490.86720868266246,
+                31.748088803981627,
+                31.70944852731975
+            ],
+            "ignore": 0,
+            "iscrowd": 0,
+            "area": 1006.7143877706319
+        },
+        {
+            "id": 7,
+            "image_id": 5,
+            "category_id": 6,
+            "segmentation": [],
+            "bbox": [
+                1504.8517110266162,
+                1066.8288973384033,
+                38.93536121673005,
+                33.09505703422048
+            ],
+            "ignore": 0,
+            "iscrowd": 0,
+            "area": 1288.5680001156572
+        },
+        {
+            "id": 8,
+            "image_id": 5,
+            "category_id": 7,
+            "segmentation": [],
+            "bbox": [
+                1504.8517110266162,
+                881.8859315589352,
+                38.93536121672987,
+                38.93536121673011
+            ],
+            "ignore": 0,
+            "iscrowd": 0,
+            "area": 1515.962353077242
+        },
+        {
+            "id": 9,
+            "image_id": 6,
+            "category_id": 8,
+            "segmentation": [],
+            "bbox": [
+                56.108457166215146,
+                471.27139512825556,
+                20.009741421328258,
+                41.274876275645504
+            ],
+            "ignore": 0,
+            "iscrowd": 0,
+            "area": 825.8996014729828
+        }
+    ],
+    "info": {
+        "year": 2025,
+        "version": "1.0",
+        "description": "",
+        "contributor": "Label Studio",
+        "url": "",
+        "date_created": "2025-11-06 05:31:40.249476"
+    }
+}
