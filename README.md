@@ -32,7 +32,7 @@ This software is open source, free of charge and for learning and exchange purpo
 * 后台运行
 
 ## 兼容性
-* 支持全 16:9 分辨率
+* 支持 1600x900 以上的 16:9 分辨率
 * 简体中文
 
 ### 下载安装包运行
@@ -57,6 +57,7 @@ python main_debug.py # run the debug version 运行调试版
 ### 相关项目
 
 * [ok-duet-night-abyss](https://github.com/BnanZ0/ok-duet-night-abyss) 一个基于图像识别的二重螺旋自动化程序。
+* [ok-sra](https://github.com/Shasnow/ok-starrailassistant) 基于ok-script开发的星铁自动化
 * [StarRailAssistant](https://github.com/Shasnow/StarRailAssistant) 一个基于图像识别的崩铁自动化程序，帮您完成从启动到退出的崩铁日常，支持多账号切换。原始项目。
 * [ok-wuthering-waves](https://github.com/ok-oldking/ok-wuthering-waves) 鸣潮 后台自动战斗 自动刷声骸 一键日常
 * [ok-script-boilerplate](https://github.com/ok-oldking/ok-script-boilerplate) ok-script 脚本模板项目

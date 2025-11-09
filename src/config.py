@@ -3,7 +3,7 @@ import os
 import numpy as np
 from ok import ConfigOption
 
-version = "v1.0.10"
+version = "v1.0.11"
 #不需要修改version, Github Action打包会自动修改
 
 key_config_option = ConfigOption('Game Hotkey Config', { #全局配置示例
@@ -97,23 +97,22 @@ config = {
     },
     'supported_resolution': {
         'ratio': '16:9', #支持的游戏分辨率
-        'min_size': (1280, 720), #支持的最低游戏分辨率
-        'resize_to': [(2560, 1440), (1920, 1080), (1600, 900), (1280, 720)], #可选, 如果非16:9自动缩放为 resize_to
+        'min_size': (1600, 900), #支持的最低游戏分辨率
+        'resize_to': [(2560, 1440), (1920, 1080), (1600, 900)], #可选, 如果非16:9自动缩放为 resize_to
     },
     'analytics': {
         'report_url': 'http://report.ok-script.cn:8080/report', #上报日活, 可选
     },
     'links': { # 关于里显示的链接, 可选
             'default': {
-                'github': 'https://github.com/ok-oldking/ok-script-boilerplate',
-                'discord': 'https://discord.gg/vVyCatEBgA',
-                'sponsor': 'https://www.paypal.com/ncp/payment/JWQBH7JZKNGCQ',
-                'share': 'Download from https://github.com/ok-oldking/ok-script-boilerplate',
-                'faq': 'https://github.com/ok-oldking/ok-script-boilerplate'
+                'github': 'https://github.com/BnanZ0/ok-duet-night-abyss',
+                'qq_group': 'https://qm.qq.com/q/iF3bfUflY',
+                'qq_channel': 'https://pd.qq.com/s/djmm6l44y',
+                'faq': 'https://cnb.cool/BnanZ0/ok-duet-night-abyss/-/blob/master/README.md'
             }
         },
     'screenshots_folder': "screenshots", #截图存放目录, 每次重新启动会清空目录
-    'gui_title': 'ok-duet-night-abyss',  # Optional
+    'gui_title': 'ok-dna',  # Optional
     'template_matching': {
         'coco_feature_json': os.path.join('assets', 'result.json'), #coco格式标记, 需要png图片, 在debug模式运行后, 会对进行切图仅保留被标记部分以减少图片大小
         'default_horizontal_variance': 0.002, #默认x偏移, 查找不传box的时候, 会根据coco坐标, match偏移box内的
@@ -138,6 +137,7 @@ config = {
         ["src.tasks.AutoCombatTask", "AutoCombatTask"],
         ["src.tasks.AutoMoveTask", "AutoMoveTask"],
         ["src.tasks.AutoAimTask", "AutoAimTask"],
+        ["src.tasks.TestMouseHook", "TestMouseHook"],
         ["src.tasks.ClickDialogTask", "ClickDialogTask"],
     ]
 }
