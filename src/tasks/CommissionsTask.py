@@ -48,16 +48,12 @@ class CommissionsTask(BaseCombatTask):
         }
 
     def find_quit_btn(self, threshold = 0):
-        continue_box = self.box_of_screen_scaled(2560, 1440, 798, 972, 855, 1026, name="quit_mission", hcenter=True)
-        template = self.get_feature_by_name('quit_icon')
-        scaled_mat = cv2.resize(template.mat, None, fx=1.1, fy=1.1, interpolation=cv2.INTER_LINEAR)
-        return self.find_one(template=scaled_mat, box=continue_box, threshold=threshold)
+        box = self.box_of_screen_scaled(2560, 1440, 798, 972, 855, 1026, name="quit_mission", hcenter=True)
+        return self.find_one("ingame_quit_icon", box=box, threshold=threshold)
 
     def find_continue_btn(self, threshold = 0):
-        continue_box = self.box_of_screen_scaled(2560, 1440, 1600, 972, 1654, 1028, name="continue_mission", hcenter=True)
-        template = self.get_feature_by_name('start_icon')
-        scaled_mat = cv2.resize(template.mat, None, fx=1.1, fy=1.1, interpolation=cv2.INTER_LINEAR)
-        return self.find_start_btn(template=scaled_mat, box=continue_box, threshold=threshold)
+        box = self.box_of_screen_scaled(2560, 1440, 1600, 972, 1654, 1028, name="continue_mission", hcenter=True)
+        return self.find_one("ingame_continue_icon", box=box, threshold=threshold)
 
     def find_bottom_start_btn(self, threshold = 0):
         return self.find_start_btn(threshold=threshold, box=self.box_of_screen_scaled(2560, 1440, 2100, 1272, 2145, 1316, name="start_mission", hcenter=True))
@@ -339,6 +335,27 @@ class CommissionsTask(BaseCombatTask):
         fps_text = find_boxes_by_name(texts, re.compile(s, re.IGNORECASE))
         if fps_text:
             return True
+        
+    def reset_and_transport(self):
+        self.open_in_mission_menu()
+        self.sleep(0.8)
+        self.wait_until(lambda: self.find_next_hint(0.05, 0.01, 0.09, 0.05, r'设置'),
+                        post_action=self.click(0.73, 0.92, after_sleep=0.5),
+                        time_out=2)
+        self.wait_until(lambda: self.find_next_hint(0.06, 0.29, 0.12, 0.33, r'重置位置'),
+                        post_action=self.click(0.35, 0.03, after_sleep=0.5),
+                        time_out=2)
+        self.wait_until(lambda: self.find_next_hint(0.57, 0.54, 0.62, 0.58, r'确定'),
+                        post_action=lambda: (
+                            self.move_mouse_to_safe_position(),
+                            self.click(0.60, 0.32),
+                            self.move_back_from_safe_position(),
+                            self.sleep(1)
+                        ),
+                        time_out=4)
+        self.wait_until(self.in_team,
+                        post_action=self.click(0.59, 0.56, after_sleep=0.5),
+                        time_out=2)
 
 
 class QuickMoveTask:

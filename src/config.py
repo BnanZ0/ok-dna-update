@@ -3,7 +3,7 @@ import os
 import numpy as np
 from ok import ConfigOption
 
-version = "v1.0.7"
+version = "v1.0.8"
 #不需要修改version, Github Action打包会自动修改
 
 key_config_option = ConfigOption('Game Hotkey Config', { #全局配置示例
@@ -128,6 +128,7 @@ config = {
         ["src.tasks.Auto65ArtifactTask", "Auto65ArtifactTask"],
         ["src.tasks.Auto65ArtifactTask_Fast", "Auto65ArtifactTask_Fast"],
         ["src.tasks.Auto70jjbTask", "Auto70jjbTask"],
+        ["src.tasks.ImportTask", "ImportTask"],
         ["src.tasks.AutoDefence", "AutoDefence"],
         ["src.tasks.AutoExploration", "AutoExploration"],
         ["src.tasks.AutoExcavation", "AutoExcavation"],
