@@ -90,6 +90,7 @@ class CommissionsTask(BaseCombatTask):
         else:
             if raise_if_not_found:
                 raise Exception("未找到任务菜单")
+        self.sleep(0.2)
         return found
 
     def start_mission(self, timeout=10):
@@ -113,10 +114,11 @@ class CommissionsTask(BaseCombatTask):
             self.find_quit_btn, time_out=action_timeout, raise_if_not_found=True
         )
         self.sleep(0.5)
-        self.click_until(
-            click_func=lambda: self.click_box(quit_btn, after_sleep=0.25),
-            check_func=lambda: not self.find_quit_btn(),
+        self.wait_until(
+            condition=lambda: not self.find_quit_btn(),
+            post_action=lambda: self.click_box(quit_btn, after_sleep=0.25),
             time_out=action_timeout,
+            raise_if_not_found=True,
         )
         self.sleep(1)
         self.wait_until(
@@ -128,18 +130,18 @@ class CommissionsTask(BaseCombatTask):
         box = self.box_of_screen_scaled(2560, 1440, 1310, 788, 1352, 830, name="start_mission", hcenter=True)
         self.open_in_mission_menu()
 
-        self.click_until(
-            click_func=lambda: self.click_relative(0.95, 0.91),
-            check_func=lambda: self.find_start_btn(box=box),
+        self.wait_until(
+            condition=lambda: self.find_start_btn(box=box),
+            post_action=lambda: self.click_relative(0.95, 0.91, after_sleep=0.25),
             time_out=action_timeout,
+            raise_if_not_found=True,
         )
         self.sleep(0.5)
-        self.click_until(
-            click_func=lambda: self.wait_click_box(
-                lambda: self.find_start_btn(box=box), time_out=0.25
-            ),
-            check_func=lambda: not self.find_start_btn(box=box),
+        self.wait_until(
+            condition=lambda: not self.find_start_btn(box=box),
+            post_action=lambda: self.click_box(self.find_start_btn(box=box), after_sleep=0.25),
             time_out=action_timeout,
+            raise_if_not_found=True,
         )
 
     def continue_mission(self, timeout=10):
@@ -149,10 +151,11 @@ class CommissionsTask(BaseCombatTask):
         continue_btn = self.wait_until(
             self.find_continue_btn, time_out=action_timeout, raise_if_not_found=True
         )
-        self.click_until(
-            click_func=lambda: self.click_box(continue_btn, after_sleep=0.25),
-            check_func=lambda: not self.find_continue_btn(),
+        self.wait_until(
+            condition=lambda: not self.find_continue_btn(),
+            post_action=lambda: self.click_box(continue_btn, after_sleep=0.25),
             time_out=action_timeout,
+            raise_if_not_found=True,
         )
         self.sleep(0.5)
         return True
@@ -162,10 +165,11 @@ class CommissionsTask(BaseCombatTask):
         self.sleep(0.5)
         self.choose_drop_rate_item()
         box = self.box_of_screen_scaled(2560, 1440, 1067, 940, 1415, 992, name="drop_rate_btn", hcenter=True)
-        self.click_until(
-            click_func=lambda: self.wait_click_box(lambda: self.find_start_btn(box=box), time_out=0.25),
-            check_func=lambda: not self.find_drop_item(),
+        self.wait_until(
+            condition=lambda: not self.find_drop_item(),
+            post_action=lambda: self.click_box(self.find_start_btn(box=box), after_sleep=0.25),
             time_out=action_timeout,
+            raise_if_not_found=True,
         )
 
     def choose_drop_rate_item(self):
@@ -195,11 +199,11 @@ class CommissionsTask(BaseCombatTask):
                 self.click(0.56, 0.5)
                 self.move_back_from_safe_position()
                 self.sleep(0.5)
-                self.click(0.56, 0.5, after_sleep=0.5)
-                self.click_until(
-                    click_func=lambda: self.click(0.79, 0.61),
-                    check_func=lambda: not self.find_letter_btn(),
+                self.wait_until(
+                    condition=lambda: not self.find_letter_btn(),
+                    post_action=lambda: self.click(0.79, 0.61, after_sleep=0.25),
                     time_out=action_timeout,
+                    raise_if_not_found=True,
                 )
         else:
             self.log_info("需自行选择密函", True)
@@ -215,10 +219,11 @@ class CommissionsTask(BaseCombatTask):
             return
         action_timeout = self.safe_get("action_timeout", timeout)
         if self.config.get("自动选择首个密函和密函奖励", False):
-            self.click_until(
-                click_func=lambda: self.click(0.50, 0.83),
-                check_func=lambda: not self.find_letter_reward_btn(),
+            self.wait_until(
+                condition=lambda: not self.find_letter_reward_btn(),
+                post_action=lambda: self.click(0.50, 0.83, after_sleep=0.25),
                 time_out=action_timeout,
+                raise_if_not_found=True,
             )
         else:
             self.log_info("需自行选择密函奖励", True)
