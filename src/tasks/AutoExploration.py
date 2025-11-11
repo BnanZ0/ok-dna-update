@@ -17,6 +17,8 @@ class AutoExploration(DNAOneTimeTask, CommissionsTask, BaseCombatTask):
         self.icon = FluentIcon.FLAG
         self.name = "自动探险"
         self.description = "半自动"
+        self.group_name = "半自动"
+        self.group_icon = FluentIcon.VIEW
 
         self.default_config.update({
             '轮次': 3,
@@ -31,7 +33,15 @@ class AutoExploration(DNAOneTimeTask, CommissionsTask, BaseCombatTask):
         
         self.action_timeout = 10
         self.quick_move_task = QuickMoveTask(self)
+        self.external_movement = lambda: False
 
+    def config_external_movement(self, func: callable, config: dict):
+        if callable(func):
+            self.external_movement = func
+        else:
+            self.external_movement = lambda: False
+        self.config.update(config)
+        
     def run(self):
         DNAOneTimeTask.run(self)
         self.move_mouse_to_safe_position()
@@ -72,8 +82,12 @@ class AutoExploration(DNAOneTimeTask, CommissionsTask, BaseCombatTask):
             _status = self.handle_mission_interface(stop_func=self.stop_func)
             if _status == Mission.START:
                 self.wait_until(self.in_team, time_out=30)
-                self.log_info_notify("任务开始")
-                self.soundBeep()
+                self.sleep(2.5)
+                if self.external_movement() == False:
+                    self.log_info_notify("任务开始")
+                    self.soundBeep()
+                else:
+                    self.log_info("任务开始")
                 _start_time = 0
             elif _status == Mission.STOP:
                 self.quit_mission()

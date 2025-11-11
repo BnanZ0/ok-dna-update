@@ -16,6 +16,8 @@ class AutoDefence(DNAOneTimeTask, CommissionsTask, BaseCombatTask):
         self.icon = FluentIcon.FLAG
         self.name = "自动扼守"
         self.description = "半自动"
+        self.group_name = "半自动"
+        self.group_icon = FluentIcon.VIEW
 
         self.default_config.update({
             '轮次': 3,
@@ -80,7 +82,8 @@ class AutoDefence(DNAOneTimeTask, CommissionsTask, BaseCombatTask):
             _status = self.handle_mission_interface(stop_func=self.stop_func)
             if _status == Mission.START:
                 self.wait_until(self.in_team, time_out=30)
-                if self.external_movement() != False:
+                self.sleep(2.5)
+                if self.external_movement() == False:
                     self.log_info_notify("任务开始")
                     self.soundBeep()
                 else:
