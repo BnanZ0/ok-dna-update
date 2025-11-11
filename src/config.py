@@ -3,7 +3,7 @@ import os
 import numpy as np
 from ok import ConfigOption
 
-version = "v1.0.13"
+version = "v1.0.14"
 #不需要修改version, Github Action打包会自动修改
 
 key_config_option = ConfigOption('Game Hotkey Config', { #全局配置示例
@@ -85,7 +85,7 @@ config = {
         'hwnd_class': 'UnrealWindow', #增加重名检查准确度
         'interaction': 'PostMessage', #支持大多数PC游戏后台点击
         'capture_method': ['WGC', 'BitBlt_RenderFull'],  # Windows版本支持的话, 优先使用WGC, 否则使用BitBlt_Full
-        'check_hdr': True, #当用户开启AutoHDR时候提示用户, 但不禁止使用
+        'check_hdr': False, #当用户开启AutoHDR时候提示用户, 但不禁止使用
         'force_no_hdr': False, #True=当用户开启AutoHDR时候禁止使用
     },
     'start_timeout': 120,  # default 60
