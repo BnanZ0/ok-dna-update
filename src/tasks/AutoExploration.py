@@ -4,27 +4,31 @@ import cv2
 
 from ok import Logger, TaskDisabledException
 from src.tasks.CommissionsTask import CommissionsTask, QuickMoveTask, Mission
+from src.tasks.BaseCombatTask import BaseCombatTask
 from src.tasks.DNAOneTimeTask import DNAOneTimeTask
 
 logger = Logger.get_logger(__name__)
 
 
-class AutoExploration(DNAOneTimeTask, CommissionsTask):
+class AutoExploration(DNAOneTimeTask, CommissionsTask, BaseCombatTask):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.icon = FluentIcon.FLAG
+        self.name = "自动探险"
         self.description = "半自动"
+
         self.default_config.update({
             '轮次': 3,
-            '任务超时时间': 120,
         })
+
+        self.setup_commission_config()
+
         self.config_description.update({
             '轮次': '打几个轮次',
-            '任务超时时间': '超时后将发出提示',
+            '超时时间': '超时后将发出提示',
         })
-        self.setup_commission_config()
-        self.name = "自动探险"
+        
         self.action_timeout = 10
         self.quick_move_task = QuickMoveTask(self)
 
@@ -57,7 +61,7 @@ class AutoExploration(DNAOneTimeTask, CommissionsTask):
                     if (
                         not _wait_next_round
                         and time.time() - _start_time
-                        >= self.config.get("任务超时时间", 120)
+                        >= self.config.get("超时时间", 120)
                     ):
                         _wait_next_round = True
                         self.log_info_notify("任务超时")

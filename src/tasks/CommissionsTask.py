@@ -3,9 +3,8 @@ import time
 import cv2
 from enum import Enum
 
-from ok import find_boxes_by_name
-from src.tasks.BaseDNATask import isolate_white_text_to_black
-from src.tasks.BaseCombatTask import BaseCombatTask
+from ok import find_boxes_by_name, TaskDisabledException
+from src.tasks.BaseDNATask import BaseDNATask, isolate_white_text_to_black
 
 
 class Mission(Enum):
@@ -15,7 +14,7 @@ class Mission(Enum):
     GIVE_UP = 4
 
 
-class CommissionsTask(BaseCombatTask):
+class CommissionsTask(BaseDNATask):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -25,6 +24,7 @@ class CommissionsTask(BaseCombatTask):
 
     def setup_commission_config(self):
         self.default_config.update({
+            '超时时间': 120,
             "委托手册": "不使用",
             "使用技能": "不使用",
             "技能释放频率": 5.0,
@@ -33,6 +33,7 @@ class CommissionsTask(BaseCombatTask):
             "自动选择首个密函和密函奖励": True,
         })
         self.config_description.update({
+            "超时时间": "超时后将重启任务",
             "技能释放频率": "毎几秒释放一次技能",
             "启用自动穿引共鸣": "在需要跑图时时启用触发任务的自动穿引共鸣",
             "发出声音提醒": "在需要时发出声音提醒",
@@ -95,8 +96,12 @@ class CommissionsTask(BaseCombatTask):
                 self.click_box(btn, after_sleep=0)
                 self.move_back_from_safe_position()
             self.sleep(0.2)
-            if self.find_start_btn() or self.find_letter_btn():
+            if self.wait_until(condition=lambda: self.find_start_btn() or self.find_letter_btn(), time_out=1):
                 break
+            if self.find_retry_btn() and self.calculate_color_percentage(retry_btn_color, self.get_box_by_name("retry_icon")) < 0.05:
+                self.soundBeep()
+                self.log_info_notify("任务无法继续")
+                raise TaskDisabledException
         else:
             raise Exception("等待开始任务超时")
 
@@ -387,4 +392,10 @@ setting_menu_selected_color = {
     'r': (220, 255),  # Red range
     'g': (200, 255),  # Green range
     'b': (125, 255)  # Blue range
+}
+
+retry_btn_color = {
+    'r': (220, 230),  # Red range
+    'g': (175, 185),  # Green range
+    'b': (79, 89)  # Blue range
 }
