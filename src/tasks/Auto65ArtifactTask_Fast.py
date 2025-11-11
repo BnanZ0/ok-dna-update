@@ -40,8 +40,9 @@ class Auto65ArtifactTask_Fast(DNAOneTimeTask, CommissionsTask, BaseCombatTask):
         self.setup_commission_config()
 
         # 移除不需要的配置项
-        self.default_config.pop("启用自动穿引共鸣", None)
-        self.default_config.pop("自动选择首个密函和密函奖励", None)
+        keys_to_remove = ["启用自动穿引共鸣", "自动选择首个密函和密函奖励"]
+        for key in keys_to_remove:
+            self.default_config.pop(key, None)
 
         # 任务名称（在UI中显示）
         self.name = "自动30/65级魔之楔本"  # 修改为你的副本名称
@@ -73,7 +74,7 @@ class Auto65ArtifactTask_Fast(DNAOneTimeTask, CommissionsTask, BaseCombatTask):
         if self.in_team():
             self.log_info("检测到已在队伍中，先放弃当前任务")
             self.give_up_mission()
-            self.wait_until(lambda: not self.in_team(), time_out=30)
+            self.wait_until(lambda: not self.in_team(), time_out=30, settle_time=1)
 
         # 主循环
         while True:
@@ -92,7 +93,7 @@ class Auto65ArtifactTask_Fast(DNAOneTimeTask, CommissionsTask, BaseCombatTask):
                 if elapsed >= self.config.get("任务超时时间", 180):
                     logger.warning(f"任务超时 ({elapsed:.1f}秒)，重新开始...")
                     self.give_up_mission()
-                    self.wait_until(lambda: not self.in_team(), time_out=30)
+                    self.wait_until(lambda: not self.in_team(), time_out=30, settle_time=1)
                     _start_time = 0  # 重置计时器
 
             # 处理任务界面
@@ -126,7 +127,7 @@ class Auto65ArtifactTask_Fast(DNAOneTimeTask, CommissionsTask, BaseCombatTask):
                 except Exception as e:
                     logger.error(f"移动到目标位置失败: {e}")
                     self.give_up_mission()
-                    self.wait_until(lambda: not self.in_team(), time_out=30)
+                    self.wait_until(lambda: not self.in_team(), time_out=30, settle_time=1)
                     _start_time = 0
 
             # 短暂休眠
