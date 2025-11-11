@@ -3,7 +3,7 @@ import os
 import numpy as np
 from ok import ConfigOption
 
-version = "v1.0.16"
+version = "v1.0.17"
 #不需要修改version, Github Action打包会自动修改
 
 key_config_option = ConfigOption('Game Hotkey Config', { #全局配置示例
@@ -108,6 +108,7 @@ config = {
                 'github': 'https://github.com/BnanZ0/ok-duet-night-abyss',
                 'qq_group': 'https://qm.qq.com/q/iF3bfUflY',
                 'qq_channel': 'https://pd.qq.com/s/djmm6l44y',
+                'discord': 'https://discord.gg/vVyCatEBgA',
                 'faq': 'https://cnb.cool/BnanZ0/ok-duet-night-abyss/-/blob/master/README.md'
             }
         },
