@@ -18,11 +18,29 @@ class BaseDNATask(BaseTask):
         self.afk_config = self.get_global_config('挂机设置')
         self.old_mouse_pos = None
         self.next_monthly_card_start = 0
+        self._logged_in = False
 
     def in_team(self) -> bool:
         if self.find_one('lv_text', threshold=0.8):
             return True
         return False
+    
+    def ensure_main(self, esc=True, time_out=30):
+        self.info_set('current task', 'wait main')
+        if not self.wait_until(lambda: self.is_main(esc=esc), time_out=time_out, raise_if_not_found=False):
+            raise Exception('Please start in game world and in team!')
+        self.info_set('current task', 'in main')
+
+    def is_main(self, esc=True):
+        if self.in_team():
+            self._logged_in = True
+            return True
+        if self.handle_monthly_card():
+            return True
+        # if self.wait_login():
+        #     return True
+        if esc:
+            self.back(after_sleep=1.5)
     
     def find_start_btn(self, threshold: float = 0, box: Box | None = None, template = None) -> Box | None:
         if isinstance(box, Box):
@@ -86,7 +104,10 @@ class BaseDNATask(BaseTask):
 
     def check_for_monthly_card(self):
         if self.should_check_monthly_card():
-            self.handle_monthly_card()
+            start = time.time()
+            ret = self.handle_monthly_card()
+            cost = time.time() - start
+            return ret, cost
             # start = time.time()
             # logger.info(f'check_for_monthly_card start check')
             # if self.in_combat():
@@ -98,7 +119,7 @@ class BaseDNATask(BaseTask):
             #     logger.info(f'wait monthly card end {monthly_card}')
             #     cost = time.time() - start
             #     return cost
-        return 0
+        return False, 0
     
     def should_check_monthly_card(self):
         if self.next_monthly_card_start > 0:
