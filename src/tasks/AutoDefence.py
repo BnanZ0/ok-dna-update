@@ -7,6 +7,7 @@ from src.tasks.BaseCombatTask import BaseCombatTask
 from src.tasks.CommissionsTask import CommissionsTask, Mission, QuickMoveTask
 
 logger = Logger.get_logger(__name__)
+_default_movement = lambda: False
 
 
 class AutoDefence(DNAOneTimeTask, CommissionsTask, BaseCombatTask):
@@ -44,6 +45,7 @@ class AutoDefence(DNAOneTimeTask, CommissionsTask, BaseCombatTask):
     def run(self):
         DNAOneTimeTask.run(self)
         self.move_mouse_to_safe_position()
+        self.set_check_monthly_card()
         try:
             return self.do_run()
         except TaskDisabledException as e:
@@ -59,6 +61,8 @@ class AutoDefence(DNAOneTimeTask, CommissionsTask, BaseCombatTask):
         _wait_next_wave = False
         _skill_time = 0
         _wave_start = 0
+        if self.external_movement is not _default_movement and self.in_team():
+            self.open_in_mission_menu()
         while True:
             if self.in_team():
                 self.get_wave_info()
@@ -70,9 +74,13 @@ class AutoDefence(DNAOneTimeTask, CommissionsTask, BaseCombatTask):
                         self.quick_move_task.reset()
 
                     if not _wait_next_wave and time.time() - _wave_start >= self.config.get("超时时间", 120):
-                        self.log_info_notify("任务超时")
-                        self.soundBeep()
-                        _wait_next_wave = True
+                        if self.external_movement is not _default_movement:
+                            self.log_info("任务超时")
+                            self.open_in_mission_menu()
+                        else:
+                            self.log_info_notify("任务超时")
+                            self.soundBeep()
+                            _wait_next_wave = True
 
                     if not _wait_next_wave:
                         _skill_time = self.use_skill(_skill_time)
@@ -82,7 +90,7 @@ class AutoDefence(DNAOneTimeTask, CommissionsTask, BaseCombatTask):
             _status = self.handle_mission_interface(stop_func=self.stop_func)
             if _status == Mission.START:
                 self.wait_until(self.in_team, time_out=30)
-                self.sleep(2.5)
+                self.sleep(2)
                 if self.external_movement() == False:
                     self.log_info_notify("任务开始")
                     self.soundBeep()

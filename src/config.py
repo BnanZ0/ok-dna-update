@@ -3,7 +3,7 @@ import os
 import numpy as np
 from ok import ConfigOption
 
-version = "v1.0.17"
+version = "v1.0.18"
 #不需要修改version, Github Action打包会自动修改
 
 key_config_option = ConfigOption('Game Hotkey Config', { #全局配置示例
@@ -15,13 +15,20 @@ key_config_option = ConfigOption('Game Hotkey Config', { #全局配置示例
 afk_config_option = ConfigOption('挂机设置', { #全局配置示例
     '提示音': 2,
     '弹出通知': True,
-    '防止鼠标干扰': False,
+    '防止鼠标干扰': True,
 }, description='挂机相关设置', config_description={
     '提示音': '单次提示响几次',
     '弹出通知': '是否弹出windows通知',
     '防止鼠标干扰': '启动任务时和特定场景下会将鼠标移动到安全位置',
 })
 
+monthly_card_config_option = ConfigOption('Monthly Card Config', {
+    'Check Monthly Card': False,
+    'Monthly Card Time': 5
+}, description='Turn on to avoid interruption by monthly card when executing tasks', config_description={
+    'Check Monthly Card': 'Check for monthly card to avoid interruption of tasks',
+    'Monthly Card Time': 'Your computer\'s local time when the monthly card will popup, hour in (1-24)'
+})
 
 def make_bottom_right_black(frame): #可选. 某些游戏截图时遮挡UID使用
     """
@@ -61,7 +68,7 @@ config = {
     'debug': False,  # Optional, default: False
     'use_gui': True, # 目前只支持True
     'config_folder': 'configs', #最好不要修改
-    'global_configs': [key_config_option, afk_config_option],
+    'global_configs': [key_config_option, afk_config_option, monthly_card_config_option],
     'screenshot_processor': make_bottom_right_black, # 在截图的时候对frame进行修改, 可选
     'gui_icon': 'icons/icon.png', #窗口图标, 最好不需要修改文件名
     'wait_until_before_delay': 0,
