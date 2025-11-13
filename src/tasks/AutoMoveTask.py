@@ -3,11 +3,14 @@ from src.tasks.BaseDNATask import BaseDNATask
 from src.tasks.BaseListenerTask import BaseListenerTask
 
 from pynput import mouse, keyboard
+
 logger = Logger.get_logger(__name__)
+
 
 class TriggerDeactivateException(Exception):
     """停止激活异常。"""
     pass
+
 
 class AutoMoveTask(BaseListenerTask, BaseDNATask, TriggerTask):
 
@@ -38,7 +41,7 @@ class AutoMoveTask(BaseListenerTask, BaseDNATask, TriggerTask):
         self.manual_activate = False
         self.signal = False
         self.signal_left = False
-    
+
     def run(self):
         self.try_connect_listener()
 
@@ -46,7 +49,7 @@ class AutoMoveTask(BaseListenerTask, BaseDNATask, TriggerTask):
             self.signal = False
             if self.in_team() and og.device_manager.hwnd_window.is_foreground():
                 self.switch_state()
-        
+
         if not self.in_team():
             return
 
@@ -59,8 +62,8 @@ class AutoMoveTask(BaseListenerTask, BaseDNATask, TriggerTask):
         if self.is_down:
             self.is_down = False
             self.mouse_up()
-        return 
-    
+        return
+
     def do_move(self):
         self.mouse_down()
         self.is_down = True
@@ -71,16 +74,16 @@ class AutoMoveTask(BaseListenerTask, BaseDNATask, TriggerTask):
 
     def sleep_check(self, sec, check_signal_flag=True):
         remaining = sec
-        step = 0.2
+        step = 0.1
         while remaining > 0:
             s = step if remaining > step else remaining
             self.sleep(s)
             remaining -= s
-            if (self.signal and check_signal_flag) or self.signal_left:
+            if (check_signal_flag and self.signal or not self.in_team()) or self.signal_left:
                 self.switch_state()
             if not self.manual_activate:
                 raise TriggerDeactivateException()
-            
+
     def switch_state(self):
         self.signal_left = False
         self.signal = False
@@ -89,7 +92,7 @@ class AutoMoveTask(BaseListenerTask, BaseDNATask, TriggerTask):
             logger.info("激活快速移动")
         else:
             logger.info("关闭快速移动")
-        
+
     def on_global_click(self, x, y, button, pressed):
         if self._executor.paused:
             return

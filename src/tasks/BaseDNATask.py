@@ -5,9 +5,10 @@ import winsound
 import win32api, win32con
 from datetime import datetime, timedelta
 
-from ok import BaseTask, Box, Logger, PostMessageInteraction
+from ok import BaseTask, Box, Logger, color_range_to_bound, run_in_new_thread
 
 logger = Logger.get_logger(__name__)
+
 
 class BaseDNATask(BaseTask):
 
@@ -24,7 +25,7 @@ class BaseDNATask(BaseTask):
         if self.find_one('lv_text', threshold=0.8):
             return True
         return False
-    
+
     def ensure_main(self, esc=True, time_out=30):
         self.info_set('current task', 'wait main')
         if not self.wait_until(lambda: self.is_main(esc=esc), time_out=time_out, raise_if_not_found=False):
@@ -41,28 +42,28 @@ class BaseDNATask(BaseTask):
         #     return True
         if esc:
             self.back(after_sleep=1.5)
-    
-    def find_start_btn(self, threshold: float = 0, box: Box | None = None, template = None) -> Box | None:
+
+    def find_start_btn(self, threshold: float = 0, box: Box | None = None, template=None) -> Box | None:
         if isinstance(box, Box):
             self.draw_boxes(box.name, box, "blue")
         return self.find_one('start_icon', threshold=threshold, box=box, template=template)
-    
-    def find_cancel_btn(self, threshold: float = 0, box: Box | None = None, template = None) -> Box | None:
+
+    def find_cancel_btn(self, threshold: float = 0, box: Box | None = None, template=None) -> Box | None:
         if isinstance(box, Box):
             self.draw_boxes(box.name, box, "blue")
         return self.find_one('cancel_icon', threshold=threshold, box=box, template=template)
-    
-    def find_retry_btn(self, threshold: float = 0, box: Box | None = None, template = None) -> Box | None:
+
+    def find_retry_btn(self, threshold: float = 0, box: Box | None = None, template=None) -> Box | None:
         if isinstance(box, Box):
             self.draw_boxes(box.name, box, "blue")
         return self.find_one('retry_icon', threshold=threshold, box=box, template=template)
-    
+
     def find_quit_btn(self, threshold: float = 0, box: Box | None = None, template=None) -> Box | None:
         if isinstance(box, Box):
             self.draw_boxes(box.name, box, "blue")
         return self.find_one('quit_icon', threshold=threshold, box=box, template=template)
-    
-    def find_drop_item(self, rates = 2000, threshold: float = 0, box: Box | None = None, template = None) -> Box | None:
+
+    def find_drop_item(self, rates=2000, threshold: float = 0, box: Box | None = None, template=None) -> Box | None:
         if isinstance(box, Box):
             self.draw_boxes(box.name, box, "blue")
         return self.find_one(f'drop_item_{str(rates)}', threshold=threshold, box=box, template=template)
@@ -73,15 +74,15 @@ class BaseDNATask(BaseTask):
         return default
 
     def soundBeep(self, _n=None):
-        if hasattr(self, "config") and not self.config.get('发出声音提醒', True):
+        if hasattr(self, "config") and not self.config.get("发出声音提醒", True):
             return
         if _n is None:
-            n = self.afk_config['提示音'] if self.afk_config['提示音'] > 0 else 1
+            n = max(1, self.afk_config.get("提示音", 1))
         else:
             n = _n
-        for _ in range(n):
-            winsound.Beep(523, 150)
-            self.sleep(0.3)
+        run_in_new_thread(
+            lambda: [winsound.Beep(523, 150) or time.sleep(0.3) for _ in range(n)]
+        )
 
     def log_info_notify(self, msg):
         self.log_info(msg, notify=self.afk_config['弹出通知'])
@@ -89,7 +90,8 @@ class BaseDNATask(BaseTask):
     def move_mouse_to_safe_position(self):
         if self.afk_config["防止鼠标干扰"]:
             self.old_mouse_pos = win32api.GetCursorPos()
-            abs_pos = self.executor.interaction.capture.get_abs_cords(self.width_of_screen(0.95), self.height_of_screen(0.6))
+            abs_pos = self.executor.interaction.capture.get_abs_cords(self.width_of_screen(0.95),
+                                                                      self.height_of_screen(0.6))
             win32api.SetCursorPos(abs_pos)
             self.sleep(0.02)
 
@@ -120,7 +122,7 @@ class BaseDNATask(BaseTask):
             #     cost = time.time() - start
             #     return cost
         return False, 0
-    
+
     def should_check_monthly_card(self):
         if self.next_monthly_card_start > 0:
             if 0 < time.time() - self.next_monthly_card_start < 120:
@@ -153,11 +155,33 @@ class BaseDNATask(BaseTask):
         logger.debug(f'check_monthly_card {monthly_card}')
         return ret
 
+    def find_track_point(self, threshold: float = 0, box: Box | None = None, template=None, frame_processor=None,
+                         mask_function=None, filter_track_color=False) -> Box | None:
+        frame = None
+        if box is None:
+            box = self.box_of_screen_scaled(2560, 1440, 454, 265, 2110, 1094, name="find_track_point", hcenter=True)
+        # if isinstance(box, Box):
+        #     self.draw_boxes(box.name, box, "blue")
+        if filter_track_color:
+            if template is None:
+                template = self.get_feature_by_name("track_point").mat
+            template = color_filter(template, track_point_color)
+            frame = color_filter(self.frame, track_point_color)
+        return self.find_one("track_point", threshold=threshold, box=box, template=template, frame=frame,
+                             frame_processor=frame_processor, mask_function=mask_function)
+
+
+track_point_color = {
+    "r": (121, 255),  # Red range
+    "g": (116, 255),  # Green range
+    "b": (34, 211),  # Blue range
+}
 
 lower_white = np.array([244, 244, 244], dtype=np.uint8)
 lower_white_none_inclusive = np.array([243, 243, 243], dtype=np.uint8)
 upper_white = np.array([255, 255, 255], dtype=np.uint8)
 black = np.array([0, 0, 0], dtype=np.uint8)
+
 
 def isolate_white_text_to_black(cv_image):
     """
@@ -172,3 +196,11 @@ def isolate_white_text_to_black(cv_image):
     output_image = cv2.cvtColor(match_mask, cv2.COLOR_GRAY2BGR)
 
     return output_image
+
+
+def color_filter(img, color):
+    lower_bound, upper_bound = color_range_to_bound(color)
+    mask = cv2.inRange(img, lower_bound, upper_bound)
+    img_modified = img.copy()
+    img_modified[mask == 0] = 0
+    return img_modified

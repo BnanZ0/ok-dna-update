@@ -21,37 +21,34 @@ class AutoFishTask(DNAOneTimeTask, BaseDNATask):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.name = "自动钓鱼"
-        self.description = "无悠闲全自动钓鱼 (原作者: B站无敌大蜜瓜)，如果识别不到鱼条修改配置降低面积要求"
+        self.description = "无悠闲全自动钓鱼 (原作者: B站无敌大蜜瓜)"
         self.group_name = "全自动"
         self.group_icon = FluentIcon.CAFE
 
         # 默认配置（会被 configs/AutoFishTask.json 覆盖）
-        self.default_config.update(
-            {
-                "MAX_ROUNDS": 100,
-                "END_WAIT_SPACE": 1.0,
-                "MAX_START_SEC": 20.0,
-                "MAX_FIGHT_SEC": 60.0,
-                "MAX_END_SEC": 20.0,
-            }
-        )
+        self.default_config.update({
+            "MAX_ROUNDS": 100,
+            "END_WAIT_SPACE": 1.0,
+            "MAX_START_SEC": 20.0,
+            "MAX_FIGHT_SEC": 60.0,
+            "MAX_END_SEC": 20.0,
+            "发出声音提醒": True,
+        })
 
         # ROI 配置（鱼条和鱼标搜索区域，基于 1920x1080）
         self.roi_fish_bar_and_icon = [1620, 325, 1645, 725]
 
         # 配置描述（便于GUI显示）
-        self.config_description.update(
-            {
-                "MAX_ROUNDS": "最大轮数(0=无限制)",
-                "END_WAIT_SPACE": "每轮结束等待时间(秒)",
-                "MAX_START_SEC": "开始阶段超时(秒)",
-                "MAX_FIGHT_SEC": "溜鱼阶段超时(秒)",
-                "MAX_END_SEC": "结束阶段超时(秒)",
-            }
-        )
+        self.config_description.update({
+            "MAX_ROUNDS": "最大轮数(0=无限制)",
+            "END_WAIT_SPACE": "每轮结束等待时间(秒)",
+            "MAX_START_SEC": "开始阶段超时(秒)",
+            "MAX_FIGHT_SEC": "溜鱼阶段超时(秒)",
+            "MAX_END_SEC": "结束阶段超时(秒)",
+            "发出声音提醒": "完成时播放提示音",
+        })
 
         # runtime
-        self.connected = False
         self.stats = {
             "rounds_completed": 0,
             "total_time": 0.0,
@@ -64,19 +61,28 @@ class AutoFishTask(DNAOneTimeTask, BaseDNATask):
         DNAOneTimeTask.run(self)
         try:
             return self.do_run()
-        except TaskDisabledException as e:
+        except TaskDisabledException:
             pass
         except Exception as e:
             logger.error("AutoFishTask error", e)
             raise
 
+    def init(self):
+        self.stats = {
+            "rounds_completed": 0,
+            "total_time": 0.0,
+            "start_time": None,
+            "current_phase": "准备中",
+            "chance_used": 0,  # 授渔以鱼使用次数
+        }
+
     def find_fish_cast(self) -> tuple[bool, tuple]:
         """查找 fish_cast 图标（抛竿/收杆），返回 (found, center)"""
         CAST_THRESHOLD = 0.8  # fish_cast 匹配阈值
-        fish_box = self.box_of_screen_scaled(
-            3840, 2160, 3147, 1566, 3383, 1797, name="fish_bite"
-        )
-        box = self.find_one("fish_cast", box=fish_box, threshold=CAST_THRESHOLD) or self.find_one("fish_ease", box=fish_box, threshold=CAST_THRESHOLD)
+        fish_box = self.box_of_screen_scaled(3840, 2160, 3147, 1566, 3383, 1797, name="fish_bite")
+        box = self.find_one("fish_cast", box=fish_box, threshold=CAST_THRESHOLD) or self.find_one("fish_ease",
+                                                                                                  box=fish_box,
+                                                                                                  threshold=CAST_THRESHOLD)
         if box:
             return True, (box.x + box.width // 2, box.y + box.height // 2)
         return False, (0, 0)
@@ -95,50 +101,44 @@ class AutoFishTask(DNAOneTimeTask, BaseDNATask):
     def find_fish_chance(self) -> tuple[bool, tuple]:
         """查找 fish_chance 图标（授渔以鱼），返回 (found, center)"""
         CHANCE_THRESHOLD = 0.8  # fish_chance 匹配阈值
-        fish_chance_box = self.box_of_screen_scaled(
-            3840, 2160, 3509, 1835, 3666, 1999, name="fish_chance"
-        )
+        fish_chance_box = self.box_of_screen_scaled(3840, 2160, 3467, 1797, 3703, 2033, name="fish_chance")
         box = self.find_one("fish_chance", box=fish_chance_box, threshold=CHANCE_THRESHOLD)
         if box:
             return True, (box.x + box.width // 2, box.y + box.height // 2)
         return False, (0, 0)
 
-    def find_bar_and_fish_by_area(self, roi_ref):
+    def find_bar_and_fish_by_area(self):
         """基于 ROI 找到鱼条和鱼标的区域与面积
 
         返回：((has_bar, bar_center, bar_rect), (has_icon, icon_center, icon_rect))
         注意：bar_center 和 icon_center 是相对于 ROI 内部的坐标，bar_rect 和 icon_rect 也是
         """
-        cfg = self.config
 
         # 获取 ROI 区域
-        box = self.box_of_screen_scaled(
-            1920, 1080, roi_ref[0], roi_ref[1], roi_ref[2], roi_ref[3], name="fish_roi"
-        )
+        box = self.box_of_screen_scaled(1920, 1080, 1620, 325, 1645, 725, name="fish_roi")
 
         try:
-            frame = self.frame
-            frame_height, frame_width = frame.shape[:2]
-            res_ratio = frame_height / 1080
+            # frame = self.frame
             # Box 对象使用 x, y, width, height 属性
-            box_x1, box_y1 = box.x, box.y
-            box_x2, box_y2 = box.x + box.width, box.y + box.height
-            box_x1 = max(0, min(box_x1, frame_width - 1))
-            box_y1 = max(0, min(box_y1, frame_height - 1))
-            box_x2 = max(box_x1 + 1, min(box_x2, frame_width))
-            box_y2 = max(box_y1 + 1, min(box_y2, frame_height))
-            roi_img = frame[box_y1:box_y2, box_x1:box_x2]
+            # box_x1, box_y1 = box.x, box.y
+            # box_x2, box_y2 = box.x + box.width, box.y + box.height
+            # box_x1 = max(0, min(box_x1, frame_width - 1))
+            # box_y1 = max(0, min(box_y1, frame_height - 1))
+            # box_x2 = max(box_x1 + 1, min(box_x2, frame_width))
+            # box_y2 = max(box_y1 + 1, min(box_y2, frame_height))
+            # roi_img = frame[box_y1:box_y2, box_x1:box_x2]
+            frame_height, _ = self.frame.shape[:2]
+            res_ratio = frame_height / 1080
+            roi_img = box.crop_frame(self.frame)
 
             # 转换为灰度图
             gray = cv2.cvtColor(roi_img, cv2.COLOR_BGR2GRAY)
 
             # 二值化：提取亮色区域（鱼条和图标都是白色/亮色）
-            _, scene_bin = cv2.threshold(gray, 220, 255, cv2.THRESH_BINARY)
+            _, scene_bin = cv2.threshold(gray, 200, 255, cv2.THRESH_BINARY)
 
             # 查找轮廓
-            contours, _ = cv2.findContours(
-                scene_bin, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE
-            )
+            contours, _ = cv2.findContours(scene_bin, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
 
             # 收集所有符合最小面积的轮廓
             blobs = []
@@ -149,9 +149,9 @@ class AutoFishTask(DNAOneTimeTask, BaseDNATask):
 
             # 按面积降序排列
             blobs.sort(key=lambda b: b["area"], reverse=True)
-            
-            #Debug only
-            # output_img = frame[box_y1:box_y2, box_x1:box_x2].copy()
+
+            # Debug only
+            # output_img = roi_img.copy()
             # colors = [
             #     (0, 0, 255),     # 红
             #     (0, 255, 0),     # 绿
@@ -164,7 +164,7 @@ class AutoFishTask(DNAOneTimeTask, BaseDNATask):
             # for i, blob in enumerate(blobs):
             #     color = colors[i % len(colors)]  # 超过列表长度循环使用
             #     cv2.drawContours(output_img, [blob["contour"]], -1, color, 2)
-            #Debug only
+            # Debug only
 
             has_bar = has_icon = False
             bar_center = bar_rect = icon_center = icon_rect = None
@@ -209,28 +209,27 @@ class AutoFishTask(DNAOneTimeTask, BaseDNATask):
 
             if has_bar:
                 zone_ratio = bar_area / box.area()
-                if self.CONTROL_ZONE_RATIO <= 0 or abs(zone_ratio - self.CONTROL_ZONE_RATIO) / self.CONTROL_ZONE_RATIO > 0.1:
+                if self.CONTROL_ZONE_RATIO <= 0 or abs(
+                        zone_ratio - self.CONTROL_ZONE_RATIO) / self.CONTROL_ZONE_RATIO > 0.1:
                     self.CONTROL_ZONE_RATIO = zone_ratio
                     self.log_info(f"set CONTROL_ZONE_RATIO {self.CONTROL_ZONE_RATIO}")
 
-            #Debug only
+            # Debug only
             # cv2.imshow("Contours", output_img)
             # cv2.waitKey(1)
-            #Debug only
+            # Debug only
 
             # 更新统计信息
-            self.stats.update(
-                {
-                    "last_bar_found": has_bar,
-                    "last_bar_area": float(bar_area),
-                    "last_icon_found": has_icon,
-                    "last_icon_area": float(icon_area),
-                }
-            )
+            self.stats.update({
+                "last_bar_found": has_bar,
+                "last_bar_area": float(bar_area),
+                "last_icon_found": has_icon,
+                "last_icon_area": float(icon_area),
+            })
 
             return (has_bar, bar_center, bar_rect), (has_icon, icon_center, icon_rect)
-        except TaskDisabledException as e:
-            cv2.destroyAllWindows()
+        except TaskDisabledException:
+            # cv2.destroyAllWindows()
             raise TaskDisabledException
         except Exception as e:
             logger.error(f"find_bar_and_fish_by_area error: {e}")
@@ -258,9 +257,7 @@ class AutoFishTask(DNAOneTimeTask, BaseDNATask):
             if self.stats["rounds_completed"] > 0:
                 self.stats["rounds_completed"] -= 1
                 self.info_set("完成轮数", self.stats["rounds_completed"])
-                logger.info(
-                    f"上一轮的鱼作为鱼饵，轮数调整为: {self.stats['rounds_completed']}"
-                )
+                logger.info(f"上一轮的鱼作为鱼饵，轮数调整为: {self.stats['rounds_completed']}")
             self.send_key("e", down_time=0.06)
         elif not has_cast_icon:
             logger.info("开始阶段未找到fish_cast，尝试按空格抛竿并等待fish_bite出现")
@@ -294,7 +291,8 @@ class AutoFishTask(DNAOneTimeTask, BaseDNATask):
         # 等待 fish_bite 消失（鱼咬钩了）
         logger.info("等待鱼咬钩...")
         bite_gone_stable_time = 0.5  # 咬钩消失稳定时间
-        ret = self.wait_until(lambda: not self.find_fish_bite()[0], time_out=start_deadline, settle_time=bite_gone_stable_time)
+        ret = self.wait_until(lambda: not self.find_fish_bite()[0], time_out=start_deadline,
+                              settle_time=bite_gone_stable_time)
         self.stats["last_bite_icon_found"] = not ret
         if not ret:
             logger.info("等待fish_bite消失超时")
@@ -338,8 +336,6 @@ class AutoFishTask(DNAOneTimeTask, BaseDNATask):
 
     def phase_fight(self) -> bool:
         cfg = self.config
-        FIGHT_LOOP_HZ = 60.0  # 溜鱼循环频率
-        tick = 1.0 / FIGHT_LOOP_HZ
         self.stats["current_phase"] = "溜鱼"
         self.info_set("当前阶段", "溜鱼")
         logger.info("进入溜鱼阶段...")
@@ -373,11 +369,7 @@ class AutoFishTask(DNAOneTimeTask, BaseDNATask):
                     logger.info("溜鱼超时")
                     return False
 
-                (has_bar, bar_center, bar_rect), (has_icon, icon_center, icon_rect) = (
-                    self.find_bar_and_fish_by_area(
-                        cfg.get("ROI_C_AND_D", self.roi_fish_bar_and_icon)
-                    )
-                )
+                (has_bar, bar_center, bar_rect), (has_icon, icon_center, icon_rect) = self.find_bar_and_fish_by_area()
 
                 # 记录鱼标相对位置（用于合并处理）
                 if has_bar and has_icon:
@@ -428,9 +420,7 @@ class AutoFishTask(DNAOneTimeTask, BaseDNATask):
                         if is_merged:
                             if merge_start_time is None:
                                 merge_start_time = now
-                                self.stats["last_merge_event"] = (
-                                    f"merged, last_rel={last_known_icon_y_relative:.1f}"
-                                )
+                                self.stats["last_merge_event"] = (f"merged, last_rel={last_known_icon_y_relative:.1f}")
                                 # logger.info("检测到合并，处理...")
                             elapsed = now - merge_start_time
                             if elapsed <= MERGE_GRACE_SECONDS:
@@ -448,16 +438,11 @@ class AutoFishTask(DNAOneTimeTask, BaseDNATask):
 
                 self.next_frame()
 
-        except TaskDisabledException as e:
+        except TaskDisabledException:
+            self.send_key_up("space")
             raise TaskDisabledException
         finally:
-            # 释放按键
-            try:
-                self.send_key_up("space")
-            except TaskDisabledException as e:
-                raise TaskDisabledException
-            except Exception:
-                pass
+            self.send_key_up("space")
 
     def phase_end(self) -> bool:
         cfg = self.config
@@ -536,17 +521,14 @@ class AutoFishTask(DNAOneTimeTask, BaseDNATask):
                         seconds = int(elapsed_time % 60)
 
                         logger.info("=" * 50)
-                        logger.info(
-                            f"✓ 已完成目标轮数: {self.stats['rounds_completed']} 轮"
-                        )
-                        logger.info(
-                            f"✓ 总耗时: {hours:02d}:{minutes:02d}:{seconds:02d}"
-                        )
+                        logger.info(f"✓ 已完成目标轮数: {self.stats['rounds_completed']} 轮")
+                        logger.info(f"✓ 总耗时: {hours:02d}:{minutes:02d}:{seconds:02d}")
                         if self.stats["rounds_completed"] > 0:
                             avg_time = elapsed_time / self.stats["rounds_completed"]
                             logger.info(f"✓ 平均每轮: {avg_time:.1f} 秒")
                         logger.info("自动钓鱼任务完成！")
                         logger.info("=" * 50)
+                        self.soundBeep()
                         break
 
                 if not self.phase_start():
@@ -585,7 +567,7 @@ class AutoFishTask(DNAOneTimeTask, BaseDNATask):
                 # 继续下一轮
                 self.sleep(1.0)
                 self.sleep(1.0)
-            except TaskDisabledException as e:
+            except TaskDisabledException:
                 raise TaskDisabledException
             except Exception as e:
                 logger.error(f"AutoFishTask fatal: {e}")
