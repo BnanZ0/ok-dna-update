@@ -394,7 +394,7 @@ class CommissionsTask(BaseDNATask):
                                         raise_if_not_found=True)
         self.wait_until(
             condition=lambda: self.calculate_color_percentage(setting_menu_selected_color, setting_other) > 0.24,
-            post_action=self.click_box(setting_other, after_sleep=0.5),
+            post_action=lambda: self.click_box(setting_other, after_sleep=0.5),
             time_out=10,
         )
         confirm_box = self.box_of_screen_scaled(2560, 1440, 1298, 776, 1368, 843, name="confirm_btn", hcenter=True)
@@ -426,7 +426,7 @@ class QuickMoveTask:
     def run(self):
         if self._owner.config.get("启用自动穿引共鸣", False):
             if not self._move_task:
-                from src.tasks.AutoMoveTask import AutoMoveTask
+                from src.tasks.trigger.AutoMoveTask import AutoMoveTask
 
                 self._move_task = self._owner.get_task_by_class(AutoMoveTask)
             

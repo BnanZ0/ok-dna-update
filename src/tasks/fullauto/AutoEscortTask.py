@@ -86,7 +86,7 @@ class AutoEscortTask(DNAOneTimeTask, CommissionsTask, BaseCombatTask):
 
     def run(self):
         DNAOneTimeTask.run(self)
-        self.move_mouse_to_safe_position()
+        self.move_mouse_to_safe_position(save_current_pos=False)
         self.set_check_monthly_card()
         try:
             return self.do_run()
@@ -500,7 +500,7 @@ class AutoEscortTask(DNAOneTimeTask, CommissionsTask, BaseCombatTask):
         Returns:
             bool: True=成功完成或无需解密, False=检测失败需要重新开始任务
         """
-        from src.tasks.AutoPuzzleTask import AutoPuzzleTask
+        from src.tasks.trigger.AutoPuzzleTask import AutoPuzzleTask
 
         # 获取 AutoPuzzleTask 实例
         puzzle_task = self.get_task_by_class(AutoPuzzleTask)
