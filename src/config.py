@@ -3,7 +3,7 @@ import os
 import numpy as np
 from ok import ConfigOption
 
-version = "v1.0.30"
+version = "v1.0.31"
 #不需要修改version, Github Action打包会自动修改
 
 key_config_option = ConfigOption('Game Hotkey Config', { #全局配置示例
@@ -162,6 +162,7 @@ config = {
         ["ok", "DiagnosisTask"],
     ],
     'trigger_tasks':[
+        ["src.tasks.trigger.AutoWheelTask", "AutoWheelTask"],
         ["src.tasks.trigger.AutoPickTask", "AutoPickTask"],
         ["src.tasks.trigger.AutoCombatTask", "AutoCombatTask"],
         ["src.tasks.trigger.AutoMoveTask", "AutoMoveTask"],
