@@ -21,6 +21,7 @@ class CommissionsTask(BaseDNATask):
         self.current_wave = -1
         self.mission_status = None
         self.action_timeout = 10
+        self.wave_future = None
 
     def setup_commission_config(self):
         self.default_config.update({
@@ -235,7 +236,7 @@ class CommissionsTask(BaseDNATask):
     def choose_letter_reward_zero(self):
         self.wait_until(
             condition=lambda: self.find_next_hint(0.60, 0.64, 0.67, 0.67, r'[:：]')
-                          and self.find_next_hint(0.33, 0.64, 0.40, 0.67, r'[:：]'),
+                              and self.find_next_hint(0.33, 0.64, 0.40, 0.67, r'[:：]'),
             time_out=4)
         if self.find_next_hint(0.33, 0.64, 0.40, 0.67, r'[:：]0'):
             self.log_info_notify("选择第一个奖励")
@@ -286,7 +287,7 @@ class CommissionsTask(BaseDNATask):
             elif self.config.get("使用技能") == "魔灵支援":
                 self.get_current_char().send_geniemon_key()
         return skill_time
-    
+
     def create_skill_ticker(self):
         def action():
             if self.config.get("使用技能", "不使用") == "不使用":
@@ -297,6 +298,7 @@ class CommissionsTask(BaseDNATask):
                 self.get_current_char().send_ultimate_key()
             elif self.config.get("使用技能") == "魔灵支援":
                 self.get_current_char().send_geniemon_key()
+
         return self.create_ticker(action, interval=lambda: self.config.get("技能释放频率", 5))
 
     def get_round_info(self):
@@ -324,21 +326,30 @@ class CommissionsTask(BaseDNATask):
     def get_wave_info(self):
         if not self.in_team():
             return
-        mission_info_box = self.box_of_screen_scaled(2560, 1440, 275, 372, 360, 470, name="mission_info", hcenter=True)
-        texts = self.ocr(
-            box=mission_info_box,
-            frame_processor=isolate_white_text_to_black,
-            match=re.compile(r"\d/\d"),
-        )
-        if texts and len(texts) == 1:
-            prev_wave = self.current_wave
-            try:
-                if m := re.match(r"(\d)/\d", texts[0].name):
+        if self.wave_future and self.wave_future.done():
+            texts = self.wave_future.result()
+            self.wave_future = None
+            if texts and len(texts) == 1:
+                prev_wave = self.current_wave
+                if (m := re.match(r"(\d)/\d", texts[0].name)):
                     self.current_wave = int(m.group(1))
-            except Exception:
-                return
-            if prev_wave != self.current_wave:
-                self.info_set("当前波次", self.current_wave)
+                else:
+                    return
+                if prev_wave != self.current_wave:
+                    self.info_set("当前波次", self.current_wave)
+        if self.wave_future is None:
+            mission_info_box = self.box_of_screen_scaled(2560, 1440, 275, 372, 445, 470, name="mission_info",
+                                                         hcenter=True)
+            self.wave_future = self.thread_pool_executor.submit(self.ocr, box=mission_info_box,
+                                                                frame_processor=isolate_white_text_to_black,
+                                                                match=re.compile(r"\d/\d"))
+
+    def reset_wave_info(self):
+        if self.wave_future is not None:
+            self.wave_future.cancel()
+            self.wave_future = None
+        self.current_wave = -1
+        self.info_set("当前波次", self.current_wave)
 
     def wait_until_get_wave_info(self):
         self.log_info("等待波次信息...")
@@ -420,11 +431,12 @@ class CommissionsTask(BaseDNATask):
             ),
             time_out=10,
         )
-        if not self.wait_until(condition=self.in_team, post_action=self.click(0.59, 0.56, after_sleep=0.5), time_out=10):
+        if not self.wait_until(condition=self.in_team, post_action=self.click(0.59, 0.56, after_sleep=0.5),
+                               time_out=10):
             self.ensure_main()
             return False
         return True
-    
+
     def find_letter_interface(self):
         box = self.find_letter_btn() or self.find_not_use_letter_icon()
         return box
@@ -441,7 +453,7 @@ class QuickMoveTask:
                 from src.tasks.trigger.AutoMoveTask import AutoMoveTask
 
                 self._move_task = self._owner.get_task_by_class(AutoMoveTask)
-            
+
             if self._move_task:
                 self._move_task.try_connect_listener()
                 self._move_task.run()

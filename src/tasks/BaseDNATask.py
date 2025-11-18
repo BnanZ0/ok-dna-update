@@ -5,6 +5,7 @@ import cv2
 import winsound
 import win32api
 from datetime import datetime, timedelta
+from concurrent.futures import ThreadPoolExecutor
 
 from ok import BaseTask, Box, Logger, color_range_to_bound, run_in_new_thread, og
 
@@ -28,14 +29,18 @@ class BaseDNATask(BaseTask):
         self._logged_in = False
 
     @property
-    def f_search_box(self):
+    def f_search_box(self) -> Box:
         f_search_box = self.get_box_by_name('pick_up_f')
-        f_search_box = f_search_box.copy(x_offset=-f_search_box.width * 0.3,
+        f_search_box = f_search_box.copy(x_offset=-f_search_box.width * 0.2,
                                          width_offset=f_search_box.width * 0.65,
                                          height_offset=f_search_box.height * 8.3,
                                          y_offset=-f_search_box.height * 1.3,
                                          name='search_dialog')
         return f_search_box
+
+    @property
+    def thread_pool_executor(self) -> ThreadPoolExecutor:
+        return og.my_app.get_thread_pool_executor()
 
     def in_team(self) -> bool:
         frame = self.frame
@@ -53,7 +58,7 @@ class BaseDNATask(BaseTask):
         # elapsed = time.perf_counter() - start_time
         # logger.debug(f"in_team check took {elapsed:.4f} seconds.")
         return result
-    
+
     def in_team_and_world(self):
         return self.in_team()
 
@@ -98,7 +103,7 @@ class BaseDNATask(BaseTask):
         if isinstance(box, Box):
             self.draw_boxes(box.name, box, "blue")
         return self.find_one(f'drop_item_{str(rates)}', threshold=threshold, box=box, template=template)
-    
+
     def find_not_use_letter_icon(self, threshold: float = 0, box: Box | None = None, template=None) -> Box | None:
         if isinstance(box, Box):
             self.draw_boxes(box.name, box, "blue")
@@ -206,7 +211,7 @@ class BaseDNATask(BaseTask):
             frame = color_filter(self.frame, track_point_color)
         return self.find_one("track_point", threshold=threshold, box=box, template=template, frame=frame,
                              frame_processor=frame_processor, mask_function=mask_function)
-    
+
     def is_mouse_in_window(self) -> bool:
         """
         检测鼠标是否在游戏窗口范围内。
@@ -220,8 +225,8 @@ class BaseDNATask(BaseTask):
         win_y = hwnd_window.y - (hwnd_window.window_height - hwnd_window.height)
 
         return (win_x <= mouse_x < win_x + hwnd_window.window_width) and \
-               (win_y <= mouse_y < win_y + hwnd_window.window_height)
-    
+            (win_y <= mouse_y < win_y + hwnd_window.window_height)
+
     def rel_move_if_in_win(self, x=0.5, y=0.5):
         """
         如果鼠标在窗口内，则将其移动到游戏窗口内的相对位置。
@@ -232,10 +237,11 @@ class BaseDNATask(BaseTask):
         """
         if not self.is_mouse_in_window():
             return False
-        abs_pos = self.executor.device_manager.hwnd_window.get_abs_cords(self.width_of_screen(x), self.height_of_screen(y))
+        abs_pos = self.executor.device_manager.hwnd_window.get_abs_cords(self.width_of_screen(x),
+                                                                         self.height_of_screen(y))
         win32api.SetCursorPos(abs_pos)
         return True
-    
+
     def create_ticker(self, action: Callable, interval: Union[float, int, Callable] = 1.0) -> Callable:
         last_time = 0
         armed = False
@@ -279,6 +285,29 @@ class BaseDNATask(BaseTask):
         tick.start_next_tick = start_next_tick
         return tick
 
+    def get_interact_key(self):
+        """获取交互的按键。
+
+        Returns:
+            str: 交互的按键字符串。
+        """
+        return self.key_config['Interact Key']
+
+    def get_dodge_key(self):
+        """获取闪避的按键。
+
+        Returns:
+            str: 闪避的按键字符串。
+        """
+        return self.key_config['Dodge Key']
+
+    def get_spiral_dive_key(self):
+        """获取螺旋飞跃的按键。
+
+        Returns:
+            str: 螺旋飞跃的按键字符串。
+        """
+        return self.key_config['HelixLeap Key']
 
 track_point_color = {
     "r": (121, 255),  # Red range
@@ -314,6 +343,7 @@ def color_filter(img, color):
     img_modified[mask == 0] = 0
     return img_modified
 
+
 def invert_max_area_only(mat):
     # 转灰度并二值化
     gray = cv2.cvtColor(mat, cv2.COLOR_BGR2GRAY)
@@ -321,7 +351,7 @@ def invert_max_area_only(mat):
 
     # 连通组件分析
     num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(thresh)
-    
+
     # 找最大连通区域（排除背景）
     areas = stats[1:, 4]
     if len(areas) == 0:

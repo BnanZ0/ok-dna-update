@@ -75,8 +75,8 @@ class ImportTask(DNAOneTimeTask, CommissionsTask, BaseCombatTask):
 
     def run(self):
         path = Path.cwd()
-        self.script = self.process_json_files(f'{path}\mod\{self.config.get('外部文件夹')}\scripts')
-        self.img = self.load_png_files(f'{path}\mod\{self.config.get('外部文件夹')}\map')
+        self.script = self.process_json_files(f'{path}\mod\{self.config.get("外部文件夹")}\scripts')
+        self.img = self.load_png_files(f'{path}\mod\{self.config.get("外部文件夹")}\map')
         DNAOneTimeTask.run(self)
         self.move_mouse_to_safe_position(save_current_pos=False)
         self.set_check_monthly_card()
@@ -92,7 +92,7 @@ class ImportTask(DNAOneTimeTask, CommissionsTask, BaseCombatTask):
                 _to_do_task = self.get_task_by_class(AutoExpulsion)
                 _to_do_task.config_external_movement(self.walk_to_aim, self.config)
             return _to_do_task.do_run()
-        except TaskDisabledException as e:
+        except TaskDisabledException:
             pass
         except Exception as e:
             logger.error('AutoDefence error', e)
@@ -140,11 +140,11 @@ class ImportTask(DNAOneTimeTask, CommissionsTask, BaseCombatTask):
                 self.walk_to_aim()
                 _wave_start = time.time()
                 _delay_task_start = _wave_start + 1
-                self.current_wave = -1
+                self.reset_wave_info()
             elif _status == Mission.CONTINUE:
                 self.log_info('任务继续')
                 self.wait_until(self.in_team, time_out=30)
-                self.current_wave = -1
+                self.reset_wave_info()
                 _wave_start = time.time()
             self.sleep(0.2)
 
@@ -152,7 +152,7 @@ class ImportTask(DNAOneTimeTask, CommissionsTask, BaseCombatTask):
         self.delay_index = None
         self.stop_mission = False
         self.current_round = -1
-        self.current_wave = -1
+        self.reset_wave_info()
         self.skill_time = 0
 
     def stop_func(self):
@@ -288,6 +288,10 @@ class ImportTask(DNAOneTimeTask, CommissionsTask, BaseCombatTask):
                 action['key'] = normalize_key(action['key'])
                 if action['key'] == 'f4':
                     self.reset_and_transport()
+                elif action['key'] == 'lshift':
+                    self.send_key_down(self.get_dodge_key())
+                elif action['key'] == 'f':
+                    self.send_key_down(self.get_interact_key())
                 else:
                     self.send_key_down(action['key'])
             elif action['type'] == "key_up":

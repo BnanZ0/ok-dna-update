@@ -230,7 +230,7 @@ class AutoFishTask(DNAOneTimeTask, BaseDNATask):
             return (has_bar, bar_center, bar_rect), (has_icon, icon_center, icon_rect)
         except TaskDisabledException:
             # cv2.destroyAllWindows()
-            raise TaskDisabledException
+            raise
         except Exception as e:
             logger.error(f"find_bar_and_fish_by_area error: {e}")
             return (False, None, None), (False, None, None)
@@ -440,7 +440,7 @@ class AutoFishTask(DNAOneTimeTask, BaseDNATask):
 
         except TaskDisabledException:
             self.send_key_up("space")
-            raise TaskDisabledException
+            raise
         finally:
             self.send_key_up("space")
 
@@ -568,7 +568,7 @@ class AutoFishTask(DNAOneTimeTask, BaseDNATask):
                 self.sleep(1.0)
                 self.sleep(1.0)
             except TaskDisabledException:
-                raise TaskDisabledException
+                raise
             except Exception as e:
                 logger.error(f"AutoFishTask fatal: {e}")
                 break

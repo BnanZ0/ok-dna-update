@@ -53,7 +53,7 @@ class AutoExpulsion(DNAOneTimeTask, CommissionsTask, BaseCombatTask):
         self.set_check_monthly_card()
         try:
             return self.do_run()
-        except TaskDisabledException as e:
+        except TaskDisabledException:
             pass
         except Exception as e:
             logger.error("AutoExpulsion error", e)
