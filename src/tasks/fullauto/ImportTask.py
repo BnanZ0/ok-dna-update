@@ -219,8 +219,8 @@ class ImportTask(DNAOneTimeTask, CommissionsTask, BaseCombatTask):
         # 预编译正则，提高多次调用的效率
         # 假设逻辑是：如果没有前置点，跳过以字母结尾的名字（通常是 start 点之后的步骤）
         end_with_letter_pattern = re.compile(r'[a-zA-Z]$')
-        maze_task = self.get_task_by_class(AutoMazeTask)
-        roulette_task = self.get_task_by_class(AutoRouletteTask)
+        # maze_task = self.get_task_by_class(AutoMazeTask)
+        # roulette_task = self.get_task_by_class(AutoRouletteTask)
 
         while True:
             start_time = time.perf_counter()
@@ -327,9 +327,15 @@ class ImportTask(DNAOneTimeTask, CommissionsTask, BaseCombatTask):
                 # 这一步阻止了 "60角色-A-1-1" 匹配到 "60角色-A-1-10"
                 if not suffix.startswith('-'):
                     continue
+                
+                # 4. 层级限制
+                # 如果剩余部分包含 2 个或以上的 '-', 说明是跨级节点 (如 A -> A-1-1)
+                # 也就是 suffix 只能是 "-1", 不能是 "-1-1"
+                if suffix.count('-') >= 2:
+                    continue
 
-                # 4. 长度限制 (防止跳太远，保持原有的逻辑)
-                # 这里的 len(suffix) 等同于 len(name) - len(index)
+                # 5. 长度限制 (保留作为最后的防线)
+                # 由于上面限制了只能有一个 '-', 这个长度限制其实主要限制 "-xxxxx" 后面数字或字符太长的情况
                 if len(suffix) > 4: 
                     continue
 
