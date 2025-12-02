@@ -3,7 +3,7 @@ import os
 import numpy as np
 from ok import ConfigOption
 
-version = "v1.0.59"
+version = "v1.0.60"
 #不需要修改version, Github Action打包会自动修改
 
 key_config_option = ConfigOption('Game Hotkey Config', { #全局配置示例
@@ -24,13 +24,19 @@ sensitivity_config_option = ConfigOption('Game Sensitivity Config', { #全局配
 }, description='Game Sensitivity Description')
 
 afk_config_option = ConfigOption('挂机设置', { #全局配置示例
-    '提示音': 2,
+    "提示音": True,
+    '提示音次数': 2,
     '弹出通知': True,
     '防止鼠标干扰': True,
+    '鼠标抖动': True,
+    '鼠标抖动锁定在窗口范围': True,
 }, description='挂机相关设置', config_description={
-    '提示音': '单次提示响几次',
+    "提示音": "在需要时发出声音提醒",
+    '提示音次数': '单次提示响几次',
     '弹出通知': '是否弹出windows通知',
     '防止鼠标干扰': '启动任务时和特定场景下会将鼠标移动到安全位置',
+    '鼠标抖动': '建议启用',
+    '鼠标抖动锁定在窗口范围': '建议启用, 鼠标抖动时如果不在窗口范围则设置到窗口范围内',
 })
 
 monthly_card_config_option = ConfigOption('Monthly Card Config', {
