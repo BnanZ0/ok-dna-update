@@ -76,6 +76,7 @@ class BaseDNATask(BaseTask):
         self.old_mouse_pos = None
         self.next_monthly_card_start = 0
         self._logged_in = False
+        self.hold_lalt = False
         self.sensitivity_config = self.get_global_config('Game Sensitivity Config')  # 游戏灵敏度配置
 
     @property
@@ -92,6 +93,14 @@ class BaseDNATask(BaseTask):
     def thread_pool_executor(self) -> ThreadPoolExecutor:
         return og.my_app.get_thread_pool_executor()
     
+    @property
+    def shared_frame(self) -> np.ndarray:
+        return og.my_app.shared_frame
+    
+    @shared_frame.setter
+    def shared_frame(self, value):
+        og.my_app.shared_frame = value
+
     @cached_property
     def genshin_interaction(self):
         """
@@ -110,13 +119,13 @@ class BaseDNATask(BaseTask):
         # 确保引用的是正确的类
         return PyDirectInteraction(self.executor.interaction.capture, self.hwnd)
 
-    def in_team(self) -> bool:
-        frame = self.frame
+    def in_team(self, frame=None) -> bool:
+        _frame = self.frame if frame is None else frame
         if self.find_one('lv_text', frame=frame, threshold=0.8):
             return True
         # start_time = time.perf_counter()
         mat = self.get_feature_by_name("ultimate_key_icon").mat
-        mat2 = self.get_box_by_name("ultimate_key_icon").crop_frame(frame)
+        mat2 = self.get_box_by_name("ultimate_key_icon").crop_frame(_frame)
         max_area1 = invert_max_area_only(mat)[2]
         max_area2 = invert_max_area_only(mat2)[2]
         result = False
@@ -200,13 +209,13 @@ class BaseDNATask(BaseTask):
         if self.afk_config["防止鼠标干扰"]:
             self.old_mouse_pos = win32api.GetCursorPos() if save_current_pos else None
             if self.rel_move_if_in_win(0.95, 0.6, box=box):
-                self.sleep(0.01)
+                self.sleep(0.001)
             else:
                 self.old_mouse_pos = None
 
     def move_back_from_safe_position(self):
         if self.afk_config["防止鼠标干扰"] and self.old_mouse_pos is not None:
-            self.sleep(0.01)
+            self.sleep(0.001)
             win32api.SetCursorPos(self.old_mouse_pos)
             self.old_mouse_pos = None
 
@@ -484,16 +493,16 @@ class BaseDNATask(BaseTask):
         # 判断设置中灵敏度开关是否打开
         if self.sensitivity_config['Game Sensitivity Switch']:
             # 获取设置中的游戏灵敏度
-            game_Xsensitivity = round(self.sensitivity_config['X-axis sensitivity'], 1)
-            game_Ysensitivity = round(self.sensitivity_config['Y-axis sensitivity'], 1)
+            game_Xsensitivity = self.sensitivity_config['X-axis sensitivity']
+            game_Ysensitivity = self.sensitivity_config['Y-axis sensitivity']
 
             # 判断和计算
             if original_Xsensitivity == game_Xsensitivity and original_Ysensitivity == game_Ysensitivity:
                 calculate_dx = dx
                 calculate_dy = dy
             else:
-                calculate_dx = dx / round(game_Xsensitivity / original_Xsensitivity, 10)
-                calculate_dy = dy / round(game_Ysensitivity / original_Ysensitivity, 10)
+                calculate_dx = round(dx / (game_Xsensitivity / original_Xsensitivity))
+                calculate_dy = round(dy / (game_Ysensitivity / original_Ysensitivity))
         else:
             calculate_dx = dx
             calculate_dy = dy
@@ -523,27 +532,91 @@ class BaseDNATask(BaseTask):
             self.sleep(0.5)
         
     def setup_jitter(self):
+        lalt_pressed = False
+        needs_resync = False
+        _in_team = None
+
+        def sleep(timeout):
+            deadline = time.time() + timeout
+            while time.time() < deadline:
+                if self.executor.current_task is None or self.executor.exit_event.is_set():
+                    self.log_info("jitter loop task stopped")
+                    return
+                check_alt()
+                time.sleep(0.1)
+
+        def send_key_down(key):
+            interaction = self.executor.interaction
+            vk_code = interaction.get_key_by_str(key)
+            interaction.post(win32con.WM_KEYDOWN, vk_code, interaction.lparam)
+
+        def send_key_up(key):
+            interaction = self.executor.interaction
+            vk_code = interaction.get_key_by_str(key)
+            interaction.post(win32con.WM_KEYUP, vk_code, interaction.lparam)
+
+        def send_key(key, down_time=0.02, after_sleep=0.0):
+            interaction = self.executor.interaction
+            vk_code = interaction.get_key_by_str(key)
+            interaction.post(win32con.WM_KEYDOWN, vk_code, interaction.lparam)
+            time.sleep(down_time)
+            interaction.post(win32con.WM_KEYUP, vk_code, interaction.lparam)
+            time.sleep(after_sleep)
+
+        def in_team():
+            nonlocal _in_team
+            local_frame = self.shared_frame 
+            if _in_team is None and local_frame is not None:
+                _in_team = self.in_team(local_frame)
+            elif local_frame is None:
+                _in_team = True
+            return _in_team
+
+        def check_alt():
+            nonlocal lalt_pressed, needs_resync, _in_team
+            
+            if self.hold_lalt:
+                if not lalt_pressed:
+                    self.log_info("[LAlt保持] 激活: 按下 LAlt")
+                    send_key_down("lalt")
+                    time.sleep(0.1)
+                    lalt_pressed = True
+                elif not needs_resync and lalt_pressed and not in_team():
+                    self.log_info("[LAlt保持] 暂停: 检测到不在队伍，暂时释放 LAlt")
+                    needs_resync = True
+                    send_key_up("lalt")
+                elif needs_resync and in_team():
+                    self.log_info("[LAlt保持] 恢复: 检测到重回队伍，重新按下 LAlt")
+                    needs_resync = False
+                    send_key_down("lalt")
+                _in_team = None
+            else:
+                if lalt_pressed:
+                    self.log_info("[LAlt保持] 停止: 功能关闭，彻底释放 LAlt")
+                    send_key_up("lalt")
+                    lalt_pressed = False
+                    needs_resync = False
+
         def _jitter_loop_task():
             current_drift = [0, 0]
+            spiral_key = self.get_spiral_dive_key()
+            numeric_keys = [str(i) for i in range(1, 6) if str(i) != spiral_key][:4]
+            random_key = [self.key_config['Geniemon Key']] + numeric_keys
+
             if self.executor.current_task:
                 self.log_info("jitter loop task start")
+
             while self.executor.current_task is not None and not self.executor.exit_event.is_set():
                 if self.executor.paused:
                     time.sleep(0.1)
                     continue
-                # if not self.scene.in_team(self.in_team_and_world):
-                #     time.sleep(1)
-                #     continue
+                
+                check_alt()
 
-                key = random.choice([self.key_config['Geniemon Key'], "1", "2", "3"])
+                key = random.choice(random_key)
                 down_time = random.uniform(0.02, 0.12)
                 after_sleep = random.uniform(0.08, 0.15)
-                interaction = self.executor.interaction
-                vk_code = interaction.get_key_by_str(key)
-                interaction.post(win32con.WM_KEYDOWN, vk_code, interaction.lparam)
-                time.sleep(down_time)
-                interaction.post(win32con.WM_KEYUP, vk_code, interaction.lparam)
-                time.sleep(after_sleep)
+                send_key(key, down_time, after_sleep)
 
                 if self.afk_config.get("鼠标抖动", True):
                     if self.afk_config.get("鼠标抖动锁定在窗口范围", True):
@@ -566,12 +639,7 @@ class BaseDNATask(BaseTask):
                         current_drift[0] += move_x
                         current_drift[1] += move_y
 
-                deadline = time.time() + random.uniform(3.0, 6.0)
-                while time.time() < deadline:
-                    if self.executor.current_task is None or self.executor.exit_event.is_set():
-                        self.log_info("jitter loop task stopped")
-                        return
-                    time.sleep(0.1)
+                sleep(random.uniform(3.0, 6.0))
 
         self.thread_pool_executor.submit(_jitter_loop_task)
 

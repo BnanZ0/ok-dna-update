@@ -3,11 +3,10 @@ import time
 import json
 import os
 
-from ok import Logger, TaskDisabledException, GenshinInteraction
+from ok import Logger, TaskDisabledException
 from src.tasks.DNAOneTimeTask import DNAOneTimeTask
 from src.tasks.BaseCombatTask import BaseCombatTask
 from src.tasks.CommissionsTask import CommissionsTask, Mission
-from src.tasks.AutoExcavation import AutoExcavation
 from src.tasks.trigger.AutoMazeTask import AutoMazeTask
 
 logger = Logger.get_logger(__name__)
@@ -320,7 +319,7 @@ class AutoEscortTask(DNAOneTimeTask, CommissionsTask, BaseCombatTask):
 
         # 使用 AutoExcavation 的 find_track_point 方法检测位置
         try:
-            track_point = AutoExcavation.find_track_point(self)
+            track_point = self.find_track_point()
 
             if track_point is None:
                 logger.warning("❌ 未检测到 track_point，无法确定路径，重新开始任务...")
@@ -459,18 +458,12 @@ class AutoEscortTask(DNAOneTimeTask, CommissionsTask, BaseCombatTask):
                 delay = 0
 
             # 等待指定的延迟时间（使用高精度等待）
-            if delay > 0:
-                if delay > 0.001:
-                    # 先 sleep 大部分时间，预留 0.5ms 缓冲
-                    time.sleep(max(0, delay - 0.0005))
+            target = time.perf_counter() + delay
+            if delay > 0.02:
+                self.sleep(delay - 0.02)
 
-                    # 自旋等待，提高时间精度
-                    end_time = time.perf_counter() + 0.0005
-                    while time.perf_counter() < end_time:
-                        pass
-                else:
-                    # 短延迟直接 sleep
-                    time.sleep(delay)
+            while time.perf_counter() < target:
+                pass
 
             # 执行不同类型的动作
             if action_type == "mouse_rotation":
@@ -494,7 +487,7 @@ class AutoEscortTask(DNAOneTimeTask, CommissionsTask, BaseCombatTask):
             else:
                 logger.warning(f"未知动作类型: {action_type}")
 
-    def wait_for_puzzle_completion(self, timeout=30):
+    def wait_for_puzzle_completion(self, timeout=10):
         """等待 AutoMazeTask 完成解密
 
         主动检测 puzzle 并触发解密，然后等待解密完成
