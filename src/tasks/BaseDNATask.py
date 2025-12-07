@@ -574,7 +574,8 @@ class BaseDNATask(BaseTask):
 
         def check_alt():
             nonlocal lalt_pressed, needs_resync, _in_team
-            
+            if not self.afk_config.get("鼠标抖动", True):
+                return
             if self.hold_lalt:
                 if not lalt_pressed:
                     self.log_info("[LAlt保持] 激活: 按下 LAlt")
