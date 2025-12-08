@@ -3,7 +3,7 @@ import os
 import numpy as np
 from ok import ConfigOption
 
-version = "v1.0.69"
+version = "v1.0.70"
 #不需要修改version, Github Action打包会自动修改
 
 key_config_option = ConfigOption('Game Hotkey Config', { #全局配置示例
@@ -153,6 +153,8 @@ config = {
     'version': version, #版本
     'my_app': ['src.globals', 'Globals'], # 全局单例对象, 可以存放加载的模型, 使用og.my_app调用
     'onetime_tasks': [  # tasks to execute
+        ["src.tasks.config.CommissionConfig", "CommissionConfig"],
+        ["src.tasks.config.CommissionSkillConfig", "CommissionSkillConfig"],
         ["src.tasks.fullauto.AutoFishTask", "AutoFishTask"],
         ["src.tasks.fullauto.AutoExploration_Fast", "AutoExploration_Fast"],
         ["src.tasks.fullauto.AutoEscortTask", "AutoEscortTask"],
