@@ -521,3 +521,9 @@ msgstr ""
 
 msgid "鼠标键或键盘按键"
 msgstr ""
+
+msgid "使用飞枪等存在视角移动的外部逻辑时可以启用"
+msgstr ""
+
+msgid "关闭抖动"
+msgstr ""

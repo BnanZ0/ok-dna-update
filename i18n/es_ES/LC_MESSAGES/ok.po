@@ -157,7 +157,10 @@ msgid ""
 "全自动80护送 (源自emt)，欢迎作者署名。\n"
 "装备：水母 + 0精春玦戟。设置：水平灵敏度和垂直灵敏度1.0，镜头距离1.3，帧率120。\n"
 "魔之楔：金色迅捷+5 / 紫色穿引共鸣 / 紫色迅捷蓄势+5 / 紫色迅捷坠击+5（面板攻速1.67）。"
-msgstr "Escolta 80 totalmente automática (de emt), se agradece la atribución del autor.\nEquipo: Medusa + Alabarda de jade de primavera refinada 0. Ajustes: Sensibilidad horizontal y vertical 1.0, distancia de la cámara 1.3, velocidad de fotogramas 120.\nCuña del demonio: Rapidez dorada+5 / Tirón de resonancia púrpura / Carga de rapidez púrpura+5 / Caída en picado de rapidez púrpura+5 (velocidad de ataque del panel 1.67)."
+msgstr ""
+"Escolta 80 totalmente automática (de emt), se agradece la atribución del autor.\n"
+"Equipo: Medusa + Alabarda de jade de primavera refinada 0. Ajustes: Sensibilidad horizontal y vertical 1.0, distancia de la cámara 1.3, velocidad de fotogramas 120.\n"
+"Cuña del demonio: Rapidez dorada+5 / Tirón de resonancia púrpura / Carga de rapidez púrpura+5 / Caída en picado de rapidez púrpura+5 (velocidad de ataque del panel 1.67)."
 
 msgid "副本类型"
 msgstr "Tipo de mazmorra"
@@ -521,3 +524,9 @@ msgstr "Bloquear la vibración del ratón dentro de la ventana"
 
 msgid "鼠标键或键盘按键"
 msgstr "Botón del ratón o tecla del teclado"
+
+msgid "使用飞枪等存在视角移动的外部逻辑时可以启用"
+msgstr "Habilitar al usar lógica externa que implique movimiento de cámara, como el Arma Voladora."
+
+msgid "关闭抖动"
+msgstr "Desactivar temblor"

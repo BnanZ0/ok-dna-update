@@ -33,12 +33,17 @@ class Auto70jjbTask(DNAOneTimeTask, CommissionsTask, BaseCombatTask):
         try:
             _to_do_task = self.get_task_by_class(AutoDefence)
             _to_do_task.config_external_movement(self.walk_to_aim, self.config)
+            original_info_set = _to_do_task.info_set
+            _to_do_task.info_set = self.info_set
             return _to_do_task.do_run()
         except TaskDisabledException:
             pass
         except Exception as e:
             logger.error('AutoDefence error', e)
             raise
+        finally:
+            if _to_do_task is not self:
+                _to_do_task.info_set = original_info_set
 
     # def do_run(self):
     #     self.init_param()

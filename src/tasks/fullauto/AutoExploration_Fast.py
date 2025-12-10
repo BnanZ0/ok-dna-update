@@ -71,6 +71,8 @@ class AutoExploration_Fast(DNAOneTimeTask, CommissionsTask, BaseCombatTask):
         try:
             _to_do_task = self.get_task_by_class(AutoExploration)
             _to_do_task.config_external_movement(self.walk_to_aim, self.config)
+            original_info_set = _to_do_task.info_set
+            _to_do_task.info_set = self.info_set
             while True:
                 try:
                     return _to_do_task.do_run()
@@ -82,6 +84,9 @@ class AutoExploration_Fast(DNAOneTimeTask, CommissionsTask, BaseCombatTask):
         except Exception as e:
             logger.error('AutoDefence error', e)
             raise
+        finally:
+            if _to_do_task is not self:
+                _to_do_task.info_set = original_info_set
 
     def walk_to_aim(self, delay=0):
         self.sleep(delay)
