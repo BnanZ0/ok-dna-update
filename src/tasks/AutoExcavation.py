@@ -108,10 +108,10 @@ class AutoExcavation(DNAOneTimeTask, CommissionsTask, BaseCombatTask):
             return True
 
     def find_target_health_bar(self, threshold: float = 0.6):
-        health_bar_box = self.box_of_screen_scaled(2560, 1440, 131, 488, 406, 501, name="health_bar", hcenter=True)
+        health_bar_box = self.box_of_screen_scaled(2560, 1440, 91, 512, 303, 525, name="health_bar", hcenter=True)
         self.draw_boxes("health_bar", health_bar_box, color="blue")
-        min_width = self.width_of_screen(200 / 2560)
-        min_height = self.height_of_screen(8 / 1440)
+        min_width = self.width_of_screen(100 / 2560)
+        min_height = self.height_of_screen(4 / 1440)
         health_bar = find_color_rectangles(self.frame, green_health_bar_color, min_width, min_height,
                                            box=health_bar_box, threshold=threshold)
         self.draw_boxes(boxes=health_bar)

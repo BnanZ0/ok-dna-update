@@ -210,7 +210,7 @@ class AutoHedge(DNAOneTimeTask, CommissionsTask, BaseCombatTask):
                         # self.info_set("进度", f"{pct}%")
             return self.last_ocr_result
         if self.ocr_future is None:
-            box = self.box_of_screen_scaled(2560, 1440, 115, 399, 217, 461, name="process_info", hcenter=True)
+            box = self.box_of_screen_scaled(2560, 1440, 115, 490, 217, 550, name="process_info", hcenter=True)
             frame = self.frame.copy()
             self.ocr_future = self.thread_pool_executor.submit(self.ocr, frame=frame, box=box, match=re.compile(r"\d+%"))
         return self.last_ocr_result

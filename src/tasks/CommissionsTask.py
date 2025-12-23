@@ -76,7 +76,7 @@ class CommissionsTask(BaseDNATask):
 
     def find_drop_rate_btn(self, threshold=0):
         return self.find_start_btn(
-            threshold=threshold, box=self.box_of_screen_scaled(2560, 1440, 1060, 935, 1420, 1000, name="drop_rate_btn",
+            threshold=threshold, box=self.box_of_screen_scaled(2560, 1440, 1060, 915, 1420, 980, name="drop_rate_btn",
                                                                hcenter=True))
 
     def find_esc_menu(self, threshold=0):
@@ -105,7 +105,7 @@ class CommissionsTask(BaseDNATask):
         while time.time() - start_time < action_timeout:
             if (btn := self.find_retry_btn() or self.find_bottom_start_btn() or self.find_big_bottom_start_btn()):
                 self.click_box_random(btn, use_safe_move=True, safe_move_box=box, right_extend=0.1, after_sleep=0.2)
-            if self.wait_until(condition=lambda: self.find_start_btn() or self.find_letter_interface(), time_out=1):
+            if self.wait_until(condition=lambda: self.find_drop_rate_btn() or self.find_letter_interface(), time_out=1):
                 break
             if self.find_retry_btn() and self.calculate_color_percentage(retry_btn_color,
                                                                          self.get_box_by_name("retry_icon")) < 0.05:
@@ -398,8 +398,7 @@ class CommissionsTask(BaseDNATask):
                     self.info_set("当前波次", self.current_wave)
             return
         if self.wave_future is None:
-            mission_info_box = self.box_of_screen_scaled(2560, 1440, 275, 372, 445, 470, name="mission_info",
-                                                         hcenter=True)
+            mission_info_box = self.box_of_screen(0.107, 0.343, 0.174, 0.386, name="mission_info", hcenter=True)
             frame = self.frame.copy()
             self.wave_future = self.thread_pool_executor.submit(self.ocr, frame=frame,
                                                                 box=mission_info_box,
@@ -492,7 +491,7 @@ class CommissionsTask(BaseDNATask):
         safe_box = self.box_of_screen_scaled(2560, 1440, 125, 207, 1811, 1234, name="safe_box", hcenter=True)
         self.wait_until(
             condition=lambda: self.find_start_btn(box=confirm_box),
-            post_action=lambda: self.click_relative_random(0.501, 0.294, 0.690, 0.325, use_safe_move=True, safe_move_box=safe_box),
+            post_action=lambda: self.click_relative_random(0.500, 0.349, 0.691, 0.382, use_safe_move=True, safe_move_box=safe_box),
             time_out=10,
         )
         safe_box = self.box_of_screen_scaled(2560, 1440, 1298, 772, 1735, 846, name="safe_box", hcenter=True)

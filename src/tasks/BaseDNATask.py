@@ -198,6 +198,8 @@ class BaseDNATask(BaseTask):
     def find_drop_item(self, rates=2000, threshold: float = 0, box: Box | None = None, template=None) -> Box | None:
         if isinstance(box, Box):
             self.draw_boxes(box.name, box, "blue")
+        else:
+            box = self.box_of_screen(0.381, 0.406, 0.713, 0.483, name="drop_rate_item", hcenter=True)
         return self.find_one(f'drop_item_{str(rates)}', threshold=threshold, box=box, template=template)
 
     def find_not_use_letter_icon(self, threshold: float = 0, box: Box | None = None, template=None) -> Box | None:
@@ -736,7 +738,7 @@ class BaseDNATask(BaseTask):
                 if not smart_sleep(long_sleep):
                     break
                     
-            self.log_info("fidget action stopped")
+            self.log_debug("fidget action stopped")
 
         self.thread_pool_executor.submit(_fidget_worker)
 

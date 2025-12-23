@@ -147,4 +147,5 @@ class AutoExploration(DNAOneTimeTask, CommissionsTask, BaseCombatTask):
             return True
 
     def find_serum(self):
-        return bool(self.find_one("serum_icon"))
+        box = self.box_of_screen(0.022, 0.392, 0.032, 0.422, name="serum_icon", hcenter=True)
+        return bool(self.find_one("serum_icon", box=box))
