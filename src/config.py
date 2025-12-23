@@ -2,8 +2,9 @@ import os
 
 import numpy as np
 from ok import ConfigOption
+from src.process_feature import process_feature
 
-version = "v1.1.1"
+version = "v1.1.2"
 #不需要修改version, Github Action打包会自动修改
 
 key_config_option = ConfigOption('Game Hotkey Config', { #全局配置示例
@@ -149,6 +150,7 @@ config = {
         'default_horizontal_variance': 0.002, #默认x偏移, 查找不传box的时候, 会根据coco坐标, match偏移box内的
         'default_vertical_variance': 0.002, #默认y偏移
         'default_threshold': 0.8, #默认threshold
+        'feature_processor': process_feature,
     },
     'version': version, #版本
     'my_app': ['src.globals', 'Globals'], # 全局单例对象, 可以存放加载的模型, 使用og.my_app调用
