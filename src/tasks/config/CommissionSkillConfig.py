@@ -33,6 +33,9 @@ class CommissionSkillConfig(BaseDNATask):
         self.icon = FluentIcon.SETTING
         self.name = "全局技能设定"
         self.description = "不需要按开始"
+        self.group_name = "任务设定"
+        self.group_icon = FluentIcon.SETTING
+        
         self.default_config.update(default_config)
         self.config_description.update(config_description)
         self.config_type.update(config_type)
