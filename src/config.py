@@ -4,7 +4,7 @@ import numpy as np
 from ok import ConfigOption
 from src.process_feature import process_feature
 
-version = "v1.1.8"
+version = "v1.1.9"
 #不需要修改version, Github Action打包会自动修改
 
 key_config_option = ConfigOption('Game Hotkey Config', { #全局配置示例
@@ -160,6 +160,7 @@ config = {
         ["src.tasks.fullauto.AutoFishTask", "AutoFishTask"],
         ["src.tasks.fullauto.AutoExploration_Fast", "AutoExploration_Fast"],
         ["src.tasks.fullauto.AutoEscortTask", "AutoEscortTask"],
+        ["src.tasks.fullauto.AutoEscortTask_Fast", "AutoEscortTask_Fast"],
         ["src.tasks.fullauto.Auto65ArtifactTask_Fast", "Auto65ArtifactTask_Fast"],
         ["src.tasks.fullauto.Auto70jjbTask", "Auto70jjbTask"],
         ["src.tasks.fullauto.ImportTask", "ImportTask"],
