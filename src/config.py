@@ -4,7 +4,7 @@ import numpy as np
 from ok import ConfigOption
 from src.process_feature import process_feature
 
-version = "v1.1.9"
+version = "v1.1.10"
 #不需要修改version, Github Action打包会自动修改
 
 key_config_option = ConfigOption('Game Hotkey Config', { #全局配置示例
@@ -21,7 +21,9 @@ key_config_option = ConfigOption('Game Hotkey Config', { #全局配置示例
 sensitivity_config_option = ConfigOption('Game Sensitivity Config', { #全局配置示例
     'Game Sensitivity Switch': False,
     'X-axis sensitivity': 1.0,
-    'Y-axis sensitivity': 1.0
+    'Y-axis sensitivity': 1.0,
+    'Aim X-axis sensitivity': 1.0,
+    'Aim Y-axis sensitivity': 1.0
 }, description='Game Sensitivity Description')
 
 afk_config_option = ConfigOption('挂机设置', { #全局配置示例
