@@ -1,10 +1,12 @@
 import re
 import time
+import numpy as np
+import cv2
 from enum import Enum
 from functools import cached_property
 
 from ok import find_boxes_by_name, TaskDisabledException
-from src.tasks.BaseDNATask import BaseDNATask, isolate_white_text_to_black
+from src.tasks.BaseDNATask import BaseDNATask, isolate_white_text_to_black, color_filter
 from src.tasks.config.CommissionConfig import CommissionConfig
 from src.tasks.config.CommissionSkillConfig import CommissionSkillConfig
 
@@ -381,13 +383,16 @@ class CommissionsTask(BaseDNATask):
             return
         box = self.box_of_screen(0.241, 0.361, 0.259, 0.394, name="green_mark", hcenter=True)
         self.wait_until(lambda: self.calculate_color_percentage(green_mark_color, box) > 0.135, time_out=1)
-        round_info_box = self.box_of_screen_scaled(2560, 1440, 531, 517, 618, 602, name="round_info", hcenter=True)
-        texts = self.ocr(box=round_info_box)
+        round_info_box = self.box_of_screen_scaled(2560, 1440, 500, 500, 620, 620, name="round_info", hcenter=True)
+        texts = self.ocr(box=round_info_box, frame_processor=ocr_normalize, name="round_info")
+        # img = ocr_normalize(round_info_box.crop_frame(self.frame))
+        # self.screenshot(name=f"round_info_ocr_{texts}", frame=img)
 
         prev_round = self.current_round
         new_round_from_ocr = None
         if texts and texts[0].name.isdigit():
             new_round_from_ocr = int(texts[0].name)
+            self.log_debug(f"get_round_info ocr 轮次 {new_round_from_ocr}")
 
         if new_round_from_ocr is not None:
             self.current_round = new_round_from_ocr
@@ -557,6 +562,13 @@ class QuickAssistTask:
             self._aim_task.reset()
             self._aim_task.try_disconnect_listener()
 
+def ocr_normalize(cv_image):
+    cv_image = color_filter(cv_image, round_info_color)
+    _, cv_image = cv2.threshold(cv_image, 127, 255, cv2.THRESH_BINARY)
+    cv_image = cv2.resize(cv_image, None, fx=1, fy=0.75, interpolation=cv2.INTER_AREA)
+    cv_image = cv2.erode(cv_image, np.ones((2, 2), np.uint8) , iterations=1)
+    cv_image = cv2.bitwise_not(cv_image)
+    return cv_image
 
 setting_menu_selected_color = {
     'r': (220, 255),  # Red range
@@ -576,6 +588,11 @@ green_mark_color = {
     'b': (120, 130)  # Blue range
 }
 
+round_info_color = {
+    'r': (200, 255),  # Red range
+    'g': (200, 255),  # Green range
+    'b': (200, 255)  # Blue range
+}
 
 def _default_movement():
     pass
