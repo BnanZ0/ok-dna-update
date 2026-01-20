@@ -4,7 +4,7 @@ import numpy as np
 from ok import ConfigOption
 from src.process_feature import process_feature
 
-version = "v1.1.14"
+version = "v1.1.15"
 #不需要修改version, Github Action打包会自动修改
 
 key_config_option = ConfigOption('Game Hotkey Config', { #全局配置示例
@@ -123,6 +123,7 @@ config = {
     'links': { # 关于里显示的链接, 可选
             'default': {
                 'github': 'https://github.com/BnanZ0/ok-duet-night-abyss',
+                'sponsor': 'https://ko-fi.com/bnanz',
                 'qq_group': 'https://qm.qq.com/q/iF3bfUflY',
                 'qq_channel': 'https://pd.qq.com/s/djmm6l44y',
                 'discord': 'https://discord.gg/vVyCatEBgA',
