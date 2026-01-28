@@ -4,7 +4,7 @@ import numpy as np
 from ok import ConfigOption
 from src.process_feature import process_feature
 
-version = "v1.1.16"
+version = "v1.1.17"
 #不需要修改version, Github Action打包会自动修改
 
 key_config_option = ConfigOption('Game Hotkey Config', { #全局配置示例
@@ -107,6 +107,11 @@ config = {
         'capture_method': ['WGC', 'BitBlt_RenderFull'],  # Windows版本支持的话, 优先使用WGC, 否则使用BitBlt_Full
         'check_hdr': False, #当用户开启AutoHDR时候提示用户, 但不禁止使用
         'force_no_hdr': False, #True=当用户开启AutoHDR时候禁止使用
+    },
+    'browser': {
+        'url': 'https://dna.yingxiong.com/cloudgame/',
+        'resolution': (1600, 900),
+        'nick': '云游戏(需要Win11并安装Edge)',
     },
     'start_timeout': 120,  # default 60
     'window_size': { #ok-script窗口大小
