@@ -406,7 +406,7 @@ class CommissionsTask(BaseDNATask):
         if self.wave_future and self.wave_future.done():
             texts = self.wave_future.result()
             self.wave_future = None
-            if texts and len(texts) == 1:
+            if texts and len(texts) >= 1:
                 prev_wave = self.current_wave
                 if (m := re.match(r"(\d)/\d", texts[0].name)):
                     self.current_wave = int(m.group(1))
@@ -512,7 +512,7 @@ class CommissionsTask(BaseDNATask):
             post_action=lambda: self.click_relative_random(0.5016, 0.4074, 0.6906, 0.4380, use_safe_move=True, safe_move_box=safe_box),
             time_out=10,
         )
-        self.sleep(0.25)
+        self.sleep(0.5)
         safe_box = self.box_of_screen_scaled(2560, 1440, 1298, 772, 1735, 846, name="safe_box", hcenter=True)
         self.wait_until(
             condition=lambda: not self.find_start_btn(box=confirm_box),
