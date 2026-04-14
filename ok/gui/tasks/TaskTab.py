@@ -2,7 +2,6 @@ import time
 
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import QTableWidgetItem
-from qfluentwidgets import PushButton
 
 from ok import Logger, og
 from ok.gui.tasks.TooltipTableWidget import TooltipTableWidget
@@ -15,10 +14,6 @@ logger = Logger.get_logger(__name__)
 class TaskTab(Tab):
     def __init__(self):
         super().__init__()
-        if og.task_manager.has_custom:
-            self.create_task_btn = PushButton(self.tr("Create Task"))
-            self.add_widget(self.create_task_btn)
-            self.create_task_btn.clicked.connect(self.create_task)
         self.keep_info_when_done = False
         self.current_task_name = ""
         self.last_task = None
@@ -76,7 +71,7 @@ class TaskTab(Tab):
             'Running') if (task is not None and task.enabled) else self.tr('Completed')
         self.task_info_container.titleLabel.setText(
             status + self.current_task_name)
-        if task is None:
+        if task is None or time.time() - task.start_time < 2:
             return
         if not self.task_info_table.isVisible():
             self.task_info_container.show()
