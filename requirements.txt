@@ -8,6 +8,8 @@ comtypes==1.4.16
     # via pycaw
 darkdetect==0.8.0
     # via pyside6-fluent-widgets
+greenlet==3.4.0
+    # via playwright
 idna==3.11
     # via requests
 mouse==0.7.1
@@ -17,7 +19,7 @@ numpy==2.4.4
     #   openvino
     #   shapely
     # via ok-duet-night-abyss (pyproject.toml)
-onnxocr-ppocrv4==0.0.5
+onnxocr-ppocrv5==0.0.14
     # via ok-duet-night-abyss (pyproject.toml)
 opencv-python==4.13.0.92
     # via ok-duet-night-abyss (pyproject.toml)
@@ -26,15 +28,19 @@ openvino==2026.1.0
 openvino-telemetry==2025.2.0
     # via openvino
 pillow==12.2.0
-    # via onnxocr-ppocrv4
+    # via onnxocr-ppocrv5
+playwright==1.58.0
+    # via ok-duet-night-abyss (pyproject.toml)
 psutil==7.2.2
     # via
     #   pycaw
 pyappify==1.0.2
 pycaw==20240210
 pyclipper==1.4.0
-    # via onnxocr-ppocrv4
+    # via onnxocr-ppocrv5
 pydirectinput==1.0.4
+pyee==13.0.1
+    # via playwright
 pynput==1.8.1
     # via ok-duet-night-abyss (pyproject.toml)
 pyside6==6.9.1
@@ -55,7 +61,7 @@ pywin32==311
     #   pysidesix-frameless-window
 requests==2.33.1
 shapely==2.1.2
-    # via onnxocr-ppocrv4
+    # via onnxocr-ppocrv5
 shiboken6==6.9.1
     # via
     #   pyside6
@@ -64,5 +70,7 @@ shiboken6==6.9.1
 six==1.17.0
     # via pynput
 typing-extensions==4.15.0
+    # via
+    #   pyee
 urllib3==2.6.3
     # via requests
