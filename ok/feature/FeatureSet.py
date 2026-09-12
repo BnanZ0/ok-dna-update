@@ -15,7 +15,7 @@ from PIL.PngImagePlugin import PngInfo
 
 from ok.feature.Box import Box, sort_boxes
 from ok.feature.Feature import Feature
-from ok.gui.Communicate import communicate
+from ok.core.events import communicate
 from ok.util.file import get_path_relative_to_exe
 from ok.util.logger import Logger
 
@@ -79,6 +79,7 @@ class FeatureSet:
         self.feature_processor = feature_processor
         self.hcenter_features = hcenter_features if hcenter_features is not None else []
         self.vcenter_features = vcenter_features if vcenter_features is not None else []
+        self._processed_images = set()
 
         logger.debug(f'Loading features from {self.coco_json}')
 
@@ -92,6 +93,7 @@ class FeatureSet:
         self.lock = threading.Lock()
 
     def feature_exists(self, feature_name: str) -> bool:
+        self.ensure_feature(feature_name)
         return feature_name in self.feature_dict
 
     def empty(self) -> bool:
@@ -104,31 +106,51 @@ class FeatureSet:
                 logger.info(f"FeatureSet: Width and height changed from {self.width}x{self.height} to {width}x{height}")
                 self.width = width
                 self.height = height
-                self.process_data()
-            elif not self.feature_dict:
-                self.process_data()
+                self.feature_dict = {}
+                self.box_dict = {}
+                self._processed_images = set()
+                self.load_success = os.path.exists(self.coco_json)
         return self.load_success
 
-    def process_data(self) -> bool:
-        self.feature_dict, self.box_dict, compressed, self.load_success = read_from_json(self.coco_json, self.width,
-                                                                                         self.height,
-                                                                                         self.hcenter_features,
-                                                                                         self.vcenter_features)
+    def _merge_features(self, features, boxes, image_keys=None, namespace=None, overwrite=False):
+        if image_keys:
+            self._processed_images.update(image_keys)
+        for k, v in features.items():
+            feature_name = f"{namespace}/{k}" if namespace else k
+            existing_box = self.box_dict.get(feature_name)
+            new_box = boxes[k]
+            if existing_box is not None:
+                if not overwrite:
+                    continue
+            if overwrite or feature_name not in self.feature_dict:
+                self.feature_dict[feature_name] = v
+                self.box_dict[feature_name] = Box(new_box.x, new_box.y, new_box.width, new_box.height,
+                                                  new_box.confidence, feature_name)
+                if self.feature_processor:
+                    self.feature_processor(feature_name, v)
+
+    def process_data(self, feature_name=None) -> bool:
+        target_feature = feature_name
+        if target_feature is None:
+            self.feature_dict = {}
+            self.box_dict = {}
+            self._processed_images = set()
+        features, boxes, compressed, self.load_success, image_keys = read_from_json(self.coco_json, self.width,
+                                                                                   self.height,
+                                                                                   self.hcenter_features,
+                                                                                   self.vcenter_features,
+                                                                                   target_category_name=target_feature,
+                                                                                   processed_images=self._processed_images)
+        self._merge_features(features, boxes, image_keys)
         # Also process ok_tasks/assets/coco_annotations.json if it exists, merge data
         ok_tasks_coco = os.path.join('ok_tasks', 'assets', 'coco_annotations.json')
         if os.path.exists(ok_tasks_coco) and os.path.abspath(ok_tasks_coco) != os.path.abspath(self.coco_json):
             try:
-                extra_features, extra_boxes, _, extra_success = read_from_json(ok_tasks_coco, self.width,
-                                                                                self.height,
-                                                                                self.hcenter_features,
-                                                                                self.vcenter_features)
+                extra_features, extra_boxes, _, extra_success, extra_image_keys = read_from_json(
+                    ok_tasks_coco, self.width, self.height, self.hcenter_features, self.vcenter_features,
+                    target_category_name=target_feature, processed_images=self._processed_images)
                 if extra_success:
-                    for k, v in extra_features.items():
-                        if k not in self.feature_dict:
-                            self.feature_dict[k] = v
-                    for k, v in extra_boxes.items():
-                        if k not in self.box_dict:
-                            self.box_dict[k] = v
+                    self._merge_features(extra_features, extra_boxes, extra_image_keys)
                     logger.info(f'Merged {len(extra_features)} features from {ok_tasks_coco}')
             except Exception as e:
                 logger.error(f'Failed to merge {ok_tasks_coco}: {e}')
@@ -139,28 +161,35 @@ class FeatureSet:
                 import_coco = os.path.join(ok_import_dir, entry, 'assets', 'coco_annotations.json')
                 if os.path.exists(import_coco):
                     try:
-                        imp_features, imp_boxes, _, imp_success = read_from_json(import_coco, self.width,
-                                                                                   self.height,
-                                                                                   self.hcenter_features,
-                                                                                   self.vcenter_features)
+                        import_target = None
+                        if target_feature and target_feature.startswith(f"{entry}/"):
+                            import_target = target_feature[len(entry) + 1:]
+                        elif target_feature:
+                            continue
+                        imp_features, imp_boxes, _, imp_success, imp_image_keys = read_from_json(
+                            import_coco, self.width, self.height, self.hcenter_features, self.vcenter_features,
+                            target_category_name=import_target, processed_images=self._processed_images,
+                            image_key_prefix=entry)
                         if imp_success:
-                            for k, v in imp_features.items():
-                                namespaced_key = f"{entry}/{k}"
-                                self.feature_dict[namespaced_key] = v
-                            for k, v in imp_boxes.items():
-                                namespaced_key = f"{entry}/{k}"
-                                self.box_dict[namespaced_key] = v
+                            self._merge_features(imp_features, imp_boxes, imp_image_keys, namespace=entry,
+                                                 overwrite=True)
                             logger.info(f'Merged {len(imp_features)} namespaced features from import {entry}')
                     except Exception as e:
                         logger.error(f'Failed to merge import features from {entry}: {e}')
-        if self.feature_processor:
-            logger.info('process features with feature_processor')
-            for feature in self.feature_dict:
-                self.feature_processor(feature, self.feature_dict[feature])
         return self.load_success
 
+    def ensure_feature(self, feature_name):
+        if feature_name is None or feature_name in self.feature_dict:
+            return
+        with self.lock:
+            if feature_name not in self.feature_dict:
+                self.process_data(feature_name)
+
     def get_box_by_name(self, mat, category_name):
+        if mat is None:
+            return None
         self.check_size(mat)
+        self.ensure_feature(category_name)
         return self.box_dict.get(category_name)
 
     def save_images(self, target_folder: str):
@@ -173,7 +202,10 @@ class FeatureSet:
             cv2.imwrite(file_path, image.mat)
 
     def get_feature_by_name(self, mat, name):
+        if mat is None:
+            return None
         self.check_size(mat)
+        self.ensure_feature(name)
         return self.feature_dict.get(name)
 
     def find_one_feature(self, mat: np.ndarray, category_name, horizontal_variance: float = 0,
@@ -182,6 +214,8 @@ class FeatureSet:
                          frame_processor=None, template=None, mask_function=None, match_method=cv2.TM_CCOEFF_NORMED,
                          screenshot=False, limit=0, target_height=0):
         import time
+        if mat is None:
+            return []
         start_time = time.time()
         self.check_size(mat)
         check_size_time = time.time()
@@ -192,6 +226,8 @@ class FeatureSet:
             horizontal_variance = self.default_horizontal_variance
         if vertical_variance == 0:
             vertical_variance = self.default_vertical_variance
+        if template is None:
+            self.ensure_feature(category_name)
         if template is None and category_name not in self.feature_dict:
             raise ValueError(f"FeatureSet: {category_name} not found in featureDict")
         if template is None:
@@ -237,34 +273,44 @@ class FeatureSet:
         prepare_time = time.time()
 
         feature_height, feature_width = template.shape[:2]
+        preprocess_key = None
+        if use_gray_scale or (canny_lower != 0 and canny_higher != 0):
+            preprocess_key = (bool(use_gray_scale), canny_lower, canny_higher)
+            cached_template = feature.template_cache.get(preprocess_key) if feature is not None else None
+        else:
+            cached_template = None
+
+        if cached_template is not None:
+            template = cached_template
         if use_gray_scale:
             search_area = cv2.cvtColor(search_area, cv2.COLOR_BGR2GRAY)
-            if len(feature.mat.shape) != 2:
+            if cached_template is None and len(template.shape) != 2:
                 template = cv2.cvtColor(template, cv2.COLOR_BGR2GRAY)
         if canny_lower != 0 and canny_higher != 0:
             if len(search_area.shape) != 2:
                 search_area = cv2.cvtColor(search_area, cv2.COLOR_BGR2GRAY)
             search_area = cv2.Canny(search_area, canny_lower, canny_higher)
-            if len(template.shape) != 2:
+            if cached_template is None and len(template.shape) != 2:
                 template = cv2.cvtColor(template, cv2.COLOR_BGR2GRAY)
+            if cached_template is None:
                 template = cv2.Canny(template, canny_lower, canny_higher)
+        if feature is not None and preprocess_key is not None and cached_template is None:
+            feature.template_cache[preprocess_key] = template
         if feature is not None and feature.mask is None:
             if mask_function is not None:
                 feature.mask = mask_function(feature.mat)
         mask = None
         if feature is not None:
             mask = feature.mask
-            feature.mat = template
         elif mask_function is not None:
             mask = mask_function(template)
 
         if frame_processor is not None:
             search_area = frame_processor(search_area)
 
-        if feature is not None and (
-                feature.mat.shape[1] > search_area.shape[1] or feature.mat.shape[0] > search_area.shape[0]):
+        if template.shape[1] > search_area.shape[1] or template.shape[0] > search_area.shape[0]:
             logger.error(
-                f'feature template {category_name} {box.name if box else ""} size greater than search area {feature.mat.shape} > {search_area.shape}')
+                f'feature template {category_name} {box.name if box else ""} size greater than search area {template.shape} > {search_area.shape}')
 
         scale_factor = 1.0
         if target_height > 0:
@@ -275,8 +321,21 @@ class FeatureSet:
                 if mask is not None:
                     mask = cv2.resize(mask, (template.shape[1], template.shape[0]), interpolation=cv2.INTER_NEAREST)
 
+        # Ensure type compatibility before matchTemplate
+        if search_area.dtype != template.dtype or search_area.ndim != template.ndim:
+            logger.warning(
+                f'Type mismatch for {category_name}: search_area={search_area.shape} {search_area.dtype}, '
+                f'template={template.shape} {template.dtype}')
+            if search_area.dtype != template.dtype:
+                template = template.astype(search_area.dtype)
+            if search_area.ndim == 3 and template.ndim == 2:
+                template = cv2.cvtColor(template, cv2.COLOR_GRAY2BGR)
+            elif search_area.ndim == 2 and template.ndim == 3:
+                search_area = cv2.cvtColor(search_area, cv2.COLOR_GRAY2BGR)
+
         result = cv2.matchTemplate(search_area, template, match_method,
                                    mask=mask)
+        np.nan_to_num(result, copy=False, nan=0, posinf=0, neginf=0)
         match_time = time.time()
 
         if screenshot:
@@ -307,7 +366,7 @@ class FeatureSet:
                         f"prepare: {(prepare_time - check_size_time) * 1000:.2f}ms, "
                         f"match: {(match_time - prepare_time) * 1000:.2f}ms, "
                         f"post: {(end_time - match_time) * 1000:.2f}ms)")
-        if category_name:
+        if category_name and self._draw_boxes_enabled():
             communicate.emit_draw_box(category_name, boxes, "red")
             search_name = "search_" + category_name
             communicate.emit_draw_box(search_name,
@@ -315,11 +374,27 @@ class FeatureSet:
                                           name=search_name), "blue")
         return boxes
 
+    def _draw_boxes_enabled(self):
+        if self.debug:
+            return True
+        try:
+            from ok import og
+            app = getattr(og, 'app', None)
+            ok_config = getattr(app, 'ok_config', None)
+            if ok_config is not None and ok_config.get('use_overlay', False):
+                return True
+            config = getattr(og, 'config', None) or {}
+            return bool(config.get('screenshots_folder') or config.get('click_screenshots_folder'))
+        except Exception:
+            return False
+
     def find_feature(self, mat: np.ndarray, category_name, horizontal_variance: float = 0,
                      vertical_variance: float = 0, threshold: float = 0, use_gray_scale: bool = False, x=-1, y=-1,
                      to_x=-1, to_y=-1, width=-1, height=-1, box=None, canny_lower=0, canny_higher=0,
                      frame_processor=None, template=None, mask_function=None, match_method=cv2.TM_CCOEFF_NORMED,
                      screenshot=False, limit=0, target_height=0):
+        if mat is None:
+            return []
         if type(category_name) is list:
             results = []
             for cn in category_name:
@@ -345,19 +420,36 @@ class FeatureSet:
                                          template=template, mask_function=mask_function, match_method=match_method,
                                          screenshot=screenshot, limit=limit, target_height=target_height)
 
-def read_from_json(coco_json, width=-1, height=-1, hcenter_features=None, vcenter_features=None, adjust=True):
+def read_from_json(coco_json, width=-1, height=-1, hcenter_features=None, vcenter_features=None, adjust=True,
+                   target_category_name=None, processed_images=None, image_key_prefix=None):
     feature_dict = {}
     box_dict = {}
     ok_compressed = None
     load_success = True
+    loaded_image_keys = set()
     data = load_json(coco_json)
     coco_folder = os.path.dirname(coco_json)
     logger.info(f"read_from_json {coco_folder} {coco_json}")
 
     image_map = {image['id']: image['file_name'] for image in data['images']}
     category_map = {category['id']: category['name'] for category in data['categories']}
+    annotations_by_image = {}
+    target_image_ids = set()
+    for annotation in data['annotations']:
+        annotations_by_image.setdefault(annotation['image_id'], []).append(annotation)
+        if target_category_name and category_map[annotation['category_id']] == target_category_name:
+            target_image_ids.add(annotation['image_id'])
+
+    if target_category_name and not target_image_ids:
+        return feature_dict, box_dict, ok_compressed, load_success, loaded_image_keys
 
     for image_id, file_name in image_map.items():
+        if target_category_name and image_id not in target_image_ids:
+            continue
+        image_key = (image_key_prefix, os.path.abspath(coco_json), image_id)
+        if processed_images and image_key in processed_images:
+            loaded_image_keys.add(image_key)
+            continue
         image_path = str(os.path.join(coco_folder, file_name))
         if ok_compressed is None:
             with Image.open(image_path) as img:
@@ -368,11 +460,9 @@ def read_from_json(coco_json, width=-1, height=-1, hcenter_features=None, vcente
             raise ValueError(f'Could not read image {image_path}')
         _, original_width = whole_image.shape[:2]
         image_height, image_width = whole_image.shape[:2]
+        loaded_image_keys.add(image_key)
 
-        for annotation in data['annotations']:
-            if image_id != annotation['image_id']:
-                continue
-
+        for annotation in annotations_by_image.get(image_id, []):
             category_id = annotation['category_id']
             bbox = annotation['bbox']
             x, y, w, h = bbox
@@ -387,7 +477,7 @@ def read_from_json(coco_json, width=-1, height=-1, hcenter_features=None, vcente
             is_hcenter = 'hcenter' in category_name or (hcenter_features and category_name in hcenter_features)
             is_vcenter = 'vcenter' in category_name or (vcenter_features and category_name in vcenter_features)
 
-            if adjust:
+            if adjust and width > 0 and height > 0:
                 x, y, w, h, scale = adjust_coordinates(x, y, w, h, width, height, image_width, image_height,
                                                        hcenter=is_hcenter, vcenter=is_vcenter)
 
@@ -408,7 +498,7 @@ def read_from_json(coco_json, width=-1, height=-1, hcenter_features=None, vcente
             feature_dict[category_name] = Feature(image, x, y, scale)
             box_dict[category_name] = Box(x, y, image.shape[1], image.shape[0], name=category_name)
 
-    return feature_dict, box_dict, ok_compressed, load_success
+    return feature_dict, box_dict, ok_compressed, load_success, loaded_image_keys
 
 def load_json(coco_json):
     with open(coco_json, 'r') as file:
@@ -451,10 +541,11 @@ def replace_extension(filename):
         return filename[:-4] + '.png', True
 
 def filter_and_sort_matches(result, threshold, w, h):
-    loc = np.where(result >= threshold)
+    threshold_mask = result >= threshold
+    loc = np.where(threshold_mask)
     matches = list(zip(*loc[::-1]))
 
-    confidences = result[result >= threshold]
+    confidences = result[threshold_mask]
 
     matches_with_confidence = sorted(zip(matches, confidences), key=lambda x: x[1], reverse=True)
 
@@ -585,7 +676,10 @@ def compress_copy_coco(coco_json, target_folder, image_folder, generate_label_en
 
     for annotation in data['annotations']:
         bbox = annotation['bbox']
-        annotation['bbox'] = [round(bbox[0]), round(bbox[1]), round(bbox[2]), round(bbox[3])]
+        w = round(bbox[2])
+        h = round(bbox[3])
+        annotation['bbox'] = [round(bbox[0]), round(bbox[1]), w, h]
+        annotation['area'] = w * h
 
     target_coco_json = os.path.join(target_folder, os.path.basename(coco_json))
     with open(target_coco_json, 'w') as json_file:
@@ -629,6 +723,20 @@ def compress_coco(coco_json) -> None:
         return
 
     image_info_map = {img['id']: img for img in data['images']}
+
+    # Sort image_ids by source file modification time (oldest first)
+    # to minimize changes to generated packed images when new images are added
+    def _get_mtime(img_id):
+        info = image_info_map.get(img_id)
+        if info:
+            path = os.path.join(coco_folder, info['file_name'])
+            try:
+                return os.path.getmtime(path)
+            except OSError:
+                pass
+        return float('inf')
+
+    image_ids.sort(key=_get_mtime)
 
     dims_to_img_ids = {}
     

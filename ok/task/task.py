@@ -1,34 +1,38 @@
 import re
-import subprocess
 import threading
 import time
 from typing import List
-from PySide6.QtCore import QCoreApplication
-
 import cv2
-from qfluentwidgets import FluentIcon
+from numpy import ndarray
 
+from ok.core.events import communicate
+from ok.core.icons import Icon
 from ok.feature.Box import find_boxes_by_name, find_boxes_within_boundary, Box, find_box_by_name, relative_box, \
     sort_boxes, find_highest_confidence_box
 from ok.feature.FeatureSet import adjust_coordinates, resize_image, scale_box, join_list_elements
-from ok.gui.Communicate import communicate
 from ok.task.exceptions import HotkeyConfigException
 from ok.util.color import calculate_color_percentage
 from ok.util.config import Config
+from ok.util.explorer import reveal_in_explorer
 from ok.util.handler import Handler
 from ok.util.logger import Logger
 from ok.util.process import create_shortcut
 
 VALID_NAMED_KEYS = {
-    'esc', 'tab', 'shift', 'lshift', 'rshift', 'ctrl', 'lctrl', 'rctrl', 'alt', 'lalt', 'ralt',
-    'enter', 'return', 'space', 'backspace', 'up', 'down', 'left', 'right', 'pageup', 'pagedown',
+    'esc', 'tab', 'shift', 'lshift', 'rshift', 'shift_l', 'shift_r',
+    'ctrl', 'control', 'lctrl', 'rctrl', 'lcontrol', 'rcontrol', 'ctrl_l', 'ctrl_r',
+    'alt', 'lalt', 'ralt', 'alt_l', 'alt_r', 'alt_gr',
+    'enter', 'return', 'space', 'backspace', 'up', 'down', 'left', 'right',
+    'pageup', 'pagedown', 'page_up', 'page_down',
     'home', 'end', 'insert', 'delete', 'capslock', 'numlock', 'scrolllock', 'printscreen',
+    'caps_lock', 'num_lock', 'scroll_lock', 'print_screen',
     'f1', 'f2', 'f3', 'f4', 'f5', 'f6', 'f7', 'f8', 'f9', 'f10', 'f11', 'f12',
     'num0', 'num1', 'num2', 'num3', 'num4', 'num5', 'num6', 'num7', 'num8', 'num9',
-    'windows', 'command', 'meta'
+    'windows', 'win', 'command', 'cmd', 'cmd_l', 'cmd_r', 'meta'
 }
 
 logger = Logger.get_logger(__name__)
+
 
 class ExecutorOperation:
     """
@@ -79,6 +83,10 @@ class ExecutorOperation:
         """
         return self.executor.get_task_by_class(cls)
 
+    def get_tasks(self):
+        """Return registered tasks without exposing the executor to extensions."""
+        return list(self.executor.get_all_tasks())
+
     def box_in_horizontal_center(self, box, off_percent=0.02):
         """
         Checks if a box is in the horizontal center.
@@ -113,6 +121,12 @@ class ExecutorOperation:
     def start_device(self):
         self._app.start_controller.start_device()
 
+    def get_overlay_view(self):
+        """Return the raw shared overlay widget when running with the GUI."""
+        if hasattr(self._app, 'get_overlay_view'):
+            return self._app.get_overlay_view()
+        return None
+
     def clipboard(self):
         from ok.third_party.paperclip import paste
         return paste()
@@ -142,7 +156,7 @@ class ExecutorOperation:
         :return: True if successful. 如果成功返回 True。
         """
         if isinstance(x, Box) or isinstance(x, list):
-            return self.click_box(x, move_back=move_back, down_time=down_time, after_sleep=after_sleep)
+            return self.click_box(x, move_back=move_back, move=move, down_time=down_time, after_sleep=after_sleep)
         elif 0 < x < 1 or 0 < y < 1:
             return self.click_relative(x, y, move_back=move_back, move=move, interval=interval, after_sleep=after_sleep,
                                        name=name, down_time=down_time, key=key, hcenter=hcenter, vcenter=vcenter)
@@ -160,8 +174,10 @@ class ExecutorOperation:
         self.executor.reset_scene()
         return True
 
-    def back(self, *args, **kwargs):
+    def back(self, *args, after_sleep=0, **kwargs):
         self.executor.interaction.back(*args, **kwargs)
+        if after_sleep > 0:
+            self.sleep(after_sleep)
 
     def middle_click(self, *args, **kwargs):
         return self.click(*args, **kwargs, key="middle")
@@ -295,7 +311,7 @@ class ExecutorOperation:
             self.click_box(to_click, relative_x, relative_y)
             return to_click
 
-    def box_of_screen(self, x, y, to_x= 1.0, to_y=1.0, width = 0.0, height = 0.0, name=None,
+    def box_of_screen(self, x, y, to_x=1.0, to_y=1.0, width=0.0, height=0.0, name=None,
                       hcenter=False, vcenter=False, confidence=1.0):
         if name is None:
             name = f"{x} {y} {width} {height}"
@@ -322,12 +338,13 @@ class ExecutorOperation:
         if self.is_adb():
             self.executor.device_manager.adb_ensure_in_front()
         elif self.hwnd:
-            self.hwnd.bring_to_front()
+            if not self.hwnd.bring_to_front():
+                self.logger.warning("ensure_in_front: bring_to_front failed, continuing")
         else:
             self.logger.warning("ensure_in_front: not adb and no hwnd found")
 
     def box_of_screen_scaled(self, original_screen_width, original_screen_height, x_original, y_original,
-                             to_x = 0, to_y = 0, width_original=0, height_original=0,
+                             to_x=0, to_y=0, width_original=0, height_original=0,
                              name=None, hcenter=False, vcenter=False, confidence=1.0):
         if width_original == 0:
             width_original = to_x - x_original
@@ -386,7 +403,7 @@ class ExecutorOperation:
         self.executor.reset_scene()
 
     def click_box(self, box: Box | List[Box] = None, relative_x=0.5, relative_y=0.5, raise_if_not_found=False,
-                  move_back=False, down_time=0.01, after_sleep=1):
+                  move_back=False, move=True, down_time=0.01, after_sleep=1):
         """
         Clicks on a box.
 
@@ -414,7 +431,8 @@ class ExecutorOperation:
                 raise Exception(f"click_box box is None")
             return
         x, y = box.relative_with_variance(relative_x, relative_y)
-        return self.click(x, y, name=box.name, move_back=move_back, down_time=down_time, after_sleep=after_sleep)
+        return self.click(x, y, name=box.name, move_back=move_back, move=move, down_time=down_time,
+                          after_sleep=after_sleep)
 
     def wait_scene(self, scene_type=None, time_out=0, pre_action=None, post_action=None):
         """
@@ -473,15 +491,19 @@ class ExecutorOperation:
     def get_global_config_desc(self, option):
         return self.executor.global_config.get_config_desc(option)
 
-    def send_key_down(self, key):
+    def send_key_down(self, key, after_sleep=0):
         key = self.validate_key(key)
         self.executor.reset_scene()
         self.executor.interaction.send_key_down(key)
+        if after_sleep > 0:
+            self.sleep(after_sleep)
 
-    def send_key_up(self, key):
+    def send_key_up(self, key, after_sleep=0):
         key = self.validate_key(key)
         self.executor.reset_scene()
         self.executor.interaction.send_key_up(key)
+        if after_sleep > 0:
+            self.sleep(after_sleep)
 
     def wait_until(self, condition, time_out=0, pre_action=None, post_action=None, settle_time=-1,
                    raise_if_not_found=False):
@@ -549,6 +571,7 @@ class ExecutorOperation:
         """
         return self.executor.device_manager.shell(*args, **kwargs)
 
+
 class FindFeature(ExecutorOperation):
     """
     Class for finding features in images.
@@ -564,9 +587,12 @@ class FindFeature(ExecutorOperation):
                      canny_higher=0, frame_processor=None, template=None, match_method=cv2.TM_CCOEFF_NORMED,
                      screenshot=False,
                      mask_function=None, frame=None, limit=0, target_height=0) -> List[Box]:
+        image = frame if frame is not None else self.executor.frame
+        if image is None:
+            return []
         if box and isinstance(box, str):
             box = self.get_box_by_name(box)
-        return self.executor.feature_set.find_feature(frame if frame is not None else self.executor.frame, feature_name,
+        return self.executor.feature_set.find_feature(image, feature_name,
                                                       horizontal_variance,
                                                       vertical_variance,
                                                       threshold, use_gray_scale, x, y, to_x, to_y, width, height,
@@ -584,28 +610,29 @@ class FindFeature(ExecutorOperation):
     def get_box_by_name(self, name):
         if isinstance(name, Box):
             return name
+        if name == 'full_screen':
+            return self.box_of_screen(0, 0, 1, 1, name=name)
+        elif name == 'right':
+            return self.box_of_screen(0.5, 0, 1, 1, name=name)
+        elif name == 'bottom_right':
+            return self.box_of_screen(0.5, 0.5, 1, 1, name=name)
+        elif name == 'top_right':
+            return self.box_of_screen(0.5, 0, 1, 0.5, name=name)
+        elif name == 'left':
+            return self.box_of_screen(0, 0, 0.5, 1, name=name)
+        elif name == 'bottom_left':
+            return self.box_of_screen(0, 0.5, 0.5, 1, name=name)
+        elif name == 'top_left':
+            return self.box_of_screen(0, 0, 0.5, 0.5, name=name)
+        elif name == 'bottom':
+            return self.box_of_screen(0, 0.5, 1, 1, name=name)
+        elif name == 'top':
+            return self.box_of_screen(0, 0, 1, 0.5, name=name)
         if self.executor.feature_set:
             box = self.executor.feature_set.get_box_by_name(self.frame, name)
             if box:
                 return box
-        if name == 'right':
-            return self.box_of_screen(0.5, 0, 1, 1)
-        elif name == 'bottom_right':
-            return self.box_of_screen(0.5, 0.5, 1, 1)
-        elif name == 'top_right':
-            return self.box_of_screen(0.5, 0, 1, 0.5)
-        elif name == 'left':
-            return self.box_of_screen(0, 0, 0.5, 1)
-        elif name == 'bottom_left':
-            return self.box_of_screen(0, 0.5, 0.5, 1)
-        elif name == 'top_left':
-            return self.box_of_screen(0, 0, 0.5, 0.5)
-        elif name == 'bottom':
-            return self.box_of_screen(0, 0.5, 1, 1)
-        elif name == 'top':
-            return self.box_of_screen(0, 0, 1, 0.5)
-        else:
-            raise ValueError(f"No box found for category {name}")
+        raise ValueError(f"No box found for category {name}")
 
     def find_feature_and_set(self, features, horizontal_variance=0, vertical_variance=0, threshold=0):
         ret = True
@@ -704,6 +731,7 @@ class FindFeature(ExecutorOperation):
                 logger.debug(f'find_first_match_in_box: {feature}')
                 return feature
 
+
 class OCR(FindFeature):
     """
     Optical Character Recognition (OCR) class for detecting and recognizing text within images.
@@ -713,15 +741,14 @@ class OCR(FindFeature):
         ocr_target_height (int): The target height for resizing images before OCR.
     """
 
-
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.ocr_default_threshold = 0.2
         self.ocr_target_height = 0
 
     def ocr(self, x=0, y=0, to_x=1, to_y=1, match=None, width=0, height=0, box=None, name=None,
-             threshold=0, frame=None, target_height=0, use_grayscale=False, log=False,
-             screenshot=False, frame_processor=None, lib='default'):
+            threshold=0, frame=None, target_height=0, use_grayscale=False, log=False,
+            screenshot=False, frame_processor=None, lib='default'):
         """
         Performs OCR on a region of an image.
 
@@ -743,11 +770,11 @@ class OCR(FindFeature):
 
         Returns:
             list: A list of Box objects representing the detected text regions, sorted by y-coordinate.
-                 Returns an empty list if no text is detected or no matches are found.
-
-        Raises:
-            Exception: If no image frame is provided.
+                 Returns an empty list if no frame is available, no text is detected, or no matches are found.
         """
+        image = frame if frame is not None else self.executor.frame
+        if image is None:
+            return []
         if box and isinstance(box, str):
             box = self.get_box_by_name(box)
         if self.executor.paused:
@@ -756,46 +783,39 @@ class OCR(FindFeature):
             threshold = self.ocr_default_threshold
         start = time.time()
         match = self.fix_match_regex(match)
-        if frame is not None:
-            image = frame
-        else:
-            image = self.executor.frame
         frame_height, frame_width = image.shape[0], image.shape[1]
-        if image is None:
-            raise Exception("ocr no frame")
+        if box is None:
+            box = relative_box(frame_width, frame_height, x, y, to_x, to_y, width, height, name)
+        if box is not None:
+            image = image[box.y:box.y + box.height, box.x:box.x + box.width]
+            if not box.name and match:
+                box.name = str(match)
+        if use_grayscale:
+            image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+
+        image, scale_factor = resize_image(image, frame_height, target_height)
+        if frame_processor is not None:
+            image = frame_processor(image)
+        detected_boxes, ocr_boxes = self.ocr_fun(lib)(box, image, match, scale_factor, threshold, lib)
+
+        communicate.emit_draw_box("ocr" + join_list_elements(name), detected_boxes, "red")
+        communicate.emit_draw_box("ocr_zone" + join_list_elements(name), [box] if box else [],
+                                  "blue")  # ensure list for drawing
+
+        if screenshot:
+            self.screenshot('ocr', frame=image, show_box=True, frame_box=box)
+        if log:
+            level = logger.info
+        elif self.log_debug and self.debug:
+            level = logger.debug
         else:
-            if box is None:
-                box = relative_box(frame_width, frame_height, x, y, to_x, to_y, width, height, name)
-            if box is not None:
-                image = image[box.y:box.y + box.height, box.x:box.x + box.width]
-                if not box.name and match:
-                    box.name = str(match)
-            if use_grayscale:
-                image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-
-            image, scale_factor = resize_image(image, frame_height, target_height)
-            if frame_processor is not None:
-                image = frame_processor(image)
-            detected_boxes, ocr_boxes = self.ocr_fun(lib)(box, image, match, scale_factor, threshold, lib)
-
-            communicate.emit_draw_box("ocr" + join_list_elements(name), detected_boxes, "red")
-            communicate.emit_draw_box("ocr_zone" + join_list_elements(name), [box] if box else [],
-                                      "blue")  # ensure list for drawing
-
-            if screenshot:
-                self.screenshot('ocr', frame=image, show_box=True, frame_box=box)
-            if log:
-                level = logger.info
-            elif self.log_debug and self.debug:
-                level = logger.debug
-            else:
-                level = None
-            if level:
-                level(
-                    f"ocr_zone {box} found result: {detected_boxes}) time: {(time.time() - start):.2f} scale_factor: {scale_factor:.2f} target_height:{target_height} resized_shape:{image.shape} all_boxes: {ocr_boxes}")
-            if level and not detected_boxes and ocr_boxes:
-                level(f'ocr detected but no match: {match} {ocr_boxes}')
-            return sort_boxes(detected_boxes)
+            level = None
+        if level:
+            level(
+                f"ocr_zone {box} found result: {detected_boxes}) time: {(time.time() - start):.2f} scale_factor: {scale_factor:.2f} target_height:{target_height} resized_shape:{image.shape} all_boxes: {ocr_boxes}")
+        if level and not detected_boxes and ocr_boxes:
+            level(f'ocr detected but no match: {match} {ocr_boxes}')
+        return sort_boxes(detected_boxes)
 
     def ocr_fun(self, lib):
         lib_name = self.executor.config.get('ocr').get(lib).get('lib')
@@ -830,20 +850,21 @@ class OCR(FindFeature):
 
     def fix_texts(self, detected_boxes):
         ocr_config = self.executor.config.get('ocr', {})
-        
+
         auto_simplify = False
         if isinstance(ocr_config, dict):
             auto_simplify = ocr_config.get('auto_simplify', False)
-            
+
         if auto_simplify:
-            locale_name = self.executor.locale.name()
+            locale = self.executor.locale
+            locale_name = locale.name() if hasattr(locale, "name") else str(locale)
             if locale_name.startswith('zh_TW') or locale_name.startswith('zh_HK') or locale_name.startswith('zh_MO'):
                 try:
                     from opencc import OpenCC
                     if not hasattr(self, '_cc_jp2t'):
                         self._cc_jp2t = OpenCC('jp2t')
                         self._cc_t2s = OpenCC('t2s')
-                        
+
                     for detected_box in detected_boxes:
                         t_name = self._cc_jp2t.convert(detected_box.name)
                         detected_box.name = self._cc_t2s.convert(t_name)
@@ -882,7 +903,8 @@ class OCR(FindFeature):
             logger.error('onnx_ocr', e)
             self.screenshot('onnx_ocr_exception', frame=image)
             if 'ZE_RESULT_ERROR_DEVICE_LOST' in str(e):
-                raise Exception(QCoreApplication.translate('Task', 'NPU inferring Error, you might need to update the Intel NPU driver!'))
+                raise Exception(self._app.tr(
+                    'NPU inferring Error, you might need to update the Intel NPU driver!'))
             raise e
         detected_boxes = []
         # logger.debug(f'rapid_ocr result {result}')
@@ -1007,7 +1029,9 @@ class OCR(FindFeature):
                 detected_box.y += box.y
         return detected_box
 
-    def wait_click_ocr(self, x=0, y=0, to_x=1, to_y=1, width=0, height=0, box=None, name=None, match=None, threshold=0, frame=None, target_height=0, time_out=0, raise_if_not_found=False, recheck_time=0, after_sleep=0, post_action=None, log=False, screenshot=False, settle_time=-1, lib="default"):
+    def wait_click_ocr(self, x=0, y=0, to_x=1, to_y=1, width=0, height=0, box=None, name=None, match=None, threshold=0,
+                       frame=None, target_height=0, time_out=0, raise_if_not_found=False, recheck_time=0, after_sleep=0,
+                       post_action=None, log=False, screenshot=False, settle_time=-1, lib="default"):
 
         result = self.wait_ocr(x, y, width=width, height=height, to_x=to_x, to_y=to_y, box=box, name=name, match=match,
                                threshold=threshold, frame=frame, target_height=target_height, time_out=time_out,
@@ -1017,14 +1041,17 @@ class OCR(FindFeature):
         if recheck_time > 0:
             self.sleep(1)
             result = self.ocr(x, y, width=width, height=height, to_x=to_x, to_y=to_y, box=box, name=name, match=match,
-                              threshold=threshold, frame=frame, target_height=target_height, log=log, screenshot=screenshot, lib=lib)
+                              threshold=threshold, frame=frame, target_height=target_height, log=log,
+                              screenshot=screenshot, lib=lib)
         if result is not None:
             self.click_box(result, after_sleep=after_sleep)
             return result
         else:
             logger.warning(f'wait ocr no box {x} {y} {width} {height} {to_x} {to_y} {match}')
 
-    def wait_ocr(self, x=0, y=0, to_x=1, to_y=1, width=0, height=0, name=None, box=None, match=None, threshold=0, frame=None, target_height=0, time_out=0, post_action=None, raise_if_not_found=False, log=False, screenshot=False, settle_time=-1, lib="default"):
+    def wait_ocr(self, x=0, y=0, to_x=1, to_y=1, width=0, height=0, name=None, box=None, match=None, threshold=0,
+                 frame=None, target_height=0, time_out=0, post_action=None, raise_if_not_found=False, log=False,
+                 screenshot=False, settle_time=-1, lib="default"):
         boxes = self.wait_until(
             lambda: self.ocr(x, y, to_x=to_x, to_y=to_y, width=width, height=height, box=box, name=name,
                              match=match, threshold=threshold, frame=frame, target_height=target_height, log=log,
@@ -1035,7 +1062,8 @@ class OCR(FindFeature):
         if not boxes and raise_if_not_found:
             logger.error(f'wait_ocr failed, ocr again and log')
             boxes = self.ocr(x, y, to_x=to_x, to_y=to_y, width=width, height=height, box=box, name=name,
-                             threshold=threshold, frame=frame, target_height=target_height, log=True, screenshot=True, lib=lib)
+                             threshold=threshold, frame=frame, target_height=target_height, log=True, screenshot=True,
+                             lib=lib)
         return boxes
 
 
@@ -1070,12 +1098,14 @@ class BaseTask(OCR):
         self.start_time = 0
         self.icon = None
         self.group_name = None
-        self.group_icon = FluentIcon.SYNC
+        self.group_icon = Icon.SYNC
         self.first_run_alert = None
         self.show_create_shortcut = False
         self.sleep_check_interval = -1
         self.last_sleep_check_time = 0
         self.in_sleep_check = False
+        self.enable_after_start = False
+        self.visible = True
         self.support_schedule_task = False
 
     def run_task_by_class(self, cls):
@@ -1089,7 +1119,7 @@ class BaseTask(OCR):
             task.info = old_ifo
             raise e
         task.info = old_ifo
-        
+
     def post_init(self):
         pass
 
@@ -1098,13 +1128,13 @@ class BaseTask(OCR):
         path = create_shortcut(None, f' {self.name}', arguments=f"-t {index}")
         if path:
             path2 = create_shortcut(None, f' {self.name} exit_after', arguments=f"-t {index} -e")
-            subprocess.Popen(r'explorer /select,"{}"'.format(path))
+            reveal_in_explorer(path)
 
     def sleep_check(self):
         pass
 
     def tr(self, message):
-        return self.app.tr(message)
+        return self._app.tr(message)
 
     def should_trigger(self):
         if self.trigger_interval == 0:
@@ -1136,13 +1166,22 @@ class BaseTask(OCR):
         else:
             return "Not Started"
 
+    def ensure_capture(self, config=None):
+        if config is None:
+            config = self.capture_config
+        if config:
+            return self.executor.device_manager.ensure_capture(config)
+
+    def update_capture(self, config):
+        return self.executor.device_manager.update_capture(config)
+
     def enable(self):
         if not self._enabled:
             self._enabled = True
             self.info_clear()
-            if self.capture_config:
-                self.executor.device_manager.ensure_capture(self.capture_config)
+            self.ensure_capture()
             self.executor.interaction.on_run()
+            self.executor.enqueue_onetime_task(self)
             logger.info(f'enabled task {self}')
         communicate.task.emit(self)
 
@@ -1172,33 +1211,65 @@ class BaseTask(OCR):
     def paused(self):
         return self._paused
 
-    def log_info(self, message, notify=False):
+    def _notification_images(self, images: ndarray | list[ndarray] | None = None, screenshot: bool = False):
+        if images is None:
+            result = []
+        elif isinstance(images, (list, tuple)):
+            result = [image for image in images if image is not None]
+        else:
+            result = [images]
+        if screenshot:
+            frame = self.executor.nullable_frame()
+            if frame is not None:
+                result.append(frame)
+        return [image.copy() if hasattr(image, 'copy') else image for image in result]
+
+    def _write_log_images(self, message, images: ndarray | list[ndarray] | None = None,
+                          screenshot: bool = False):
+        frames = self._notification_images(images, screenshot)
+        for index, frame in enumerate(frames):
+            communicate.screenshot.emit(frame, f'log/log_{index + 1}', False, None)
+        return frames
+
+    def log_info(self, message, notify=False, images: ndarray | list[ndarray] | None = None,
+                 screenshot: bool = False):
         self.logger.info(message)
         self.info_set("Log", message)
         if notify:
-            self.notification(message, tray=True)
+            self.notification(message, tray=True, images=images, screenshot=screenshot)
+        else:
+            self._write_log_images(message, images, screenshot)
 
-    def log_debug(self, message, notify=False):
+    def log_debug(self, message, notify=False, images: ndarray | list[ndarray] | None = None,
+                  screenshot: bool = False):
         self.logger.debug(message)
         if notify:
-            self.notification(message, tray=True)
+            self.notification(message, tray=True, images=images, screenshot=screenshot)
+        else:
+            self._write_log_images(message, images, screenshot)
 
-    def log_warning(self, message, notify=False):
+    def log_warning(self, message, notify=False, images: ndarray | list[ndarray] | None = None,
+                    screenshot: bool = False):
         self.logger.warning(message)
         self.info_set("Warning", message)
         if notify:
-            self.notification(message, tray=True)
+            self.notification(message, tray=True, images=images, screenshot=screenshot)
+        else:
+            self._write_log_images(message, images, screenshot)
 
-    def log_error(self, message, exception=None, notify=False):
+    def log_error(self, message, exception=None, notify=False, images: ndarray | list[ndarray] | None = None,
+                  screenshot: bool = False):
         self.logger.error(message, exception)
         if exception is not None:
             if len(exception.args) > 0:
-                message += exception.args[0]
+                message += str(exception.args[0])
             else:
                 message += str(exception)
         self.info_set("Error", message)
         if notify:
-            self.notification(message, error=True, tray=True)
+            self.notification(message, error=True, tray=True, images=images, screenshot=True)
+        else:
+            self._write_log_images(message, images, True)
 
     def go_to_tab(self, tab):
         self.log_info(f"go to tab {tab}")
@@ -1208,8 +1279,19 @@ class BaseTask(OCR):
         self.executor.start()
         self.enable()
 
-    def notification(self, message, title=None, error=False, tray=False, show_tab=None, params=None):
-        communicate.notification.emit(message, title, error, tray, show_tab, params)
+    def notification(self, message, title=None, error=False, tray=False, show_tab=None, params=None,
+                     images: ndarray | list[ndarray] | None = None, screenshot: bool = False):
+        frames = self._notification_images(images, screenshot)
+        for index, frame in enumerate(frames):
+            communicate.screenshot.emit(frame, f'notification/notification_{index + 1}', False, None)
+        communicate.notification.emit(message, title, error, tray, show_tab, params, frames)
+
+    def emit_web_event(self, event, payload=None):
+        """Publish a serializable event to this task's optional browser tab."""
+        tab = getattr(self, "web_tab", None)
+        if tab is None:
+            raise RuntimeError(f"{self.__class__.__name__} does not declare web_tab")
+        communicate.task_tab.emit(tab.id, str(event), payload)
 
     @property
     def enabled(self):
@@ -1219,7 +1301,7 @@ class BaseTask(OCR):
         self.info.clear()
 
     def info_incr(self, key, inc=1):
-        # If the key is in the dictionary, get its value. If not, return 0.
+        # If the key is in the dictionary, get its value. If not, return 0.p
         value = self.info.get(key, 0)
         # Increment the value
         value += inc
@@ -1260,6 +1342,8 @@ class BaseTask(OCR):
 
     def disable(self):
         self._enabled = False
+        self.executor.remove_onetime_task(self)
+        self.executor._wake_executor()
         communicate.task.emit(self)
 
     @property
@@ -1299,6 +1383,7 @@ class BaseTask(OCR):
             boxes = find_boxes_within_boundary(boxes, box)
         return boxes
 
+
 class TriggerTask(BaseTask):
     """
     Trigger task class that can be enabled/disabled and triggered periodically.
@@ -1327,5 +1412,3 @@ class TriggerTask(BaseTask):
     def disable(self):
         super().disable()
         self.config['_enabled'] = False
-
-

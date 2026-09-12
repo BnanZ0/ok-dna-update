@@ -2,10 +2,8 @@ import sys
 import threading
 import time
 
-from PySide6.QtCore import QCoreApplication
-
-from ok.gui.Communicate import communicate
-from ok.gui.util.Alert import alert_info
+from ok.core.events import communicate
+from ok.core.notifications import alert_info
 from ok.task.exceptions import FinishedException, TaskDisabledException, WaitFailedException, CaptureException, \
     HotkeyConfigException
 from ok.util.GlobalConfig import basic_options
@@ -14,6 +12,7 @@ from ok.util.process import is_cuda_12_or_above, prevent_sleeping
 from ok.util.window import ratio_text_to_number
 
 logger = Logger.get_logger(__name__)
+
 
 class TaskExecutor:
     _frame: object
@@ -37,6 +36,7 @@ class TaskExecutor:
     trigger_task_index: int
     trigger_tasks: list
     onetime_tasks: list
+    onetime_task_queue: list
     thread: object
     locale: object
     scene: object
@@ -45,6 +45,8 @@ class TaskExecutor:
     config: object
     basic_options: object
     lock: object
+    _ocr_lib_lock: object
+    _ocr_init_thread: object
 
     def __init__(self, device_manager,
                  wait_until_timeout=10, wait_until_settle_time=-1,
@@ -59,8 +61,7 @@ class TaskExecutor:
         self.paused = True
         self.config = config
         self.scene = None
-        from ok.gui.common.config import cfg
-        self.locale = cfg.get(cfg.language).value
+        self.locale = config.get("locale", "en_US")
         self.text_fix = {}
         self.ocr_po_translation = None
         self.load_tr()
@@ -83,18 +84,40 @@ class TaskExecutor:
 
         self.trigger_tasks = []
         self.onetime_tasks = []
+        self.onetime_task_queue = []
         self.thread = None
         self.lock = threading.Lock()
+        self._wake_condition = threading.Condition()
+        self._wake_version = 0
+        self._destroy_lock = threading.Lock()
+        self._destroyed = False
+        if hasattr(self.exit_event, 'bind_condition'):
+            self.exit_event.bind_condition(self._wake_condition)
+        self._ocr_lib_lock = threading.Lock()
+        self._ocr_init_thread = None
+        self.blur_overlay_processor = None
+        if callable(self.config.get('blur_area')):
+            from ok.util.blur import BlurOverlayProcessor, DEFAULT_BLUR_ALGORITHM
+            self.blur_overlay_processor = BlurOverlayProcessor(
+                self.config.get('blur_area'),
+                lambda: bool(self.basic_options.get('Enable Blur', False)),
+                communicate.blur_overlay.emit,
+                communicate.clear_blur_overlay.emit,
+                self.exit_event,
+                algorithm=lambda: self.basic_options.get('Blur Algorithm', DEFAULT_BLUR_ALGORITHM),
+                interval=lambda: self.basic_options.get('Blur Interval', 1))
+            communicate.window.connect(self.blur_overlay_processor.set_visible)
+        self.init_default_ocr()
 
     def load_tr(self):
-        locale_name = self.locale.name()
+        locale_name = self.locale.name() if hasattr(self.locale, "name") else str(self.locale)
         try:
-            from ok.gui.i18n.GettextTranslator import get_ocr_translations
+            from ok.core.translation import get_ocr_translations
             self.ocr_po_translation = get_ocr_translations(locale_name)
             self.ocr_po_translation.install()
             logger.info(f'translation ocr installed for {locale_name}')
         except:
-            logger.error(f'install ocr translations error for {locale_name}')
+            logger.info(f'install ocr translations error for {locale_name}')
             self.ocr_po_translation = None
 
     @property
@@ -107,52 +130,79 @@ class TaskExecutor:
 
     def ocr_lib(self, name="default"):
         if name not in self._ocr_lib:
-            lib = self.config.get('ocr').get(name).get('lib')
-            to_download = self.config.get('ocr').get(name).get('download_models')
-            if to_download:
-                models = self.config.get('download_models').get(to_download)
-                from ok.gui.util.download import download_models
-                download_models(models)
-
-            config_params = self.config.get('ocr').get(name).get('params')
-            if config_params is None:
-                config_params = {}
-            if lib == 'paddleocr':
-                logger.info('use paddleocr as ocr lib')
-                from paddleocr import PaddleOCR
-                lang = 'ch'
-                config_params['use_textline_orientation'] = False
-                config_params['use_doc_unwarping'] = False
-                config_params['use_doc_orientation_classify'] = False
-                config_params['device'] = "gpu" if is_cuda_12_or_above() else "cpu"
-                logger.info(f'init PaddleOCR with {config_params}')
-                self._ocr_lib[name] = PaddleOCR(**config_params)
-                import logging
-                logging.getLogger('ppocr').setLevel(logging.ERROR)
-                config_logger(self.config)
-            elif lib == 'dgocr':
-                if config_params.get('use_dml', True):
-                    config_params['use_dml'] = True
-                from dgocr import DGOCR
-                self._ocr_lib[name] = DGOCR(**config_params)
-            elif lib == 'onnxocr':
-                from onnxocr.onnx_paddleocr import ONNXPaddleOcr
-                logger.info(f'init onnxocr {config_params}')
-                self._ocr_lib[name] = ONNXPaddleOcr(use_angle_cls=False,
-                                                    logger=logger,
-                                                    use_npu=config_params.get('use_npu', True),
-                                                    use_openvino=config_params.get('use_openvino', False))
-            elif lib == 'rapidocr':
-                from rapidocr import RapidOCR
-                params = {"Global.use_cls": False, "Global.max_side_len": 100000, "Global.min_side_len": 0,
-                          "EngineConfig.onnxruntime.use_dml": False}
-                params.update(config_params)
-                logger.info(f'init rapidocr {params}')
-                self._ocr_lib[name] = RapidOCR(params=params)
-            else:
-                raise Exception(f'ocr lib not supported: {lib}')
-            logger.info(f'ocr_lib init {self._ocr_lib[name]} {lib}')
+            with self._ocr_lib_lock:
+                if name not in self._ocr_lib:
+                    self._ocr_lib[name] = self._create_ocr_lib(name)
         return self._ocr_lib[name]
+
+    def init_default_ocr(self):
+        ocr_config = self.config.get('ocr')
+        if not ocr_config:
+            return
+        default_ocr = ocr_config.get('default')
+        if not default_ocr or not default_ocr.get('lib'):
+            return
+        self._ocr_init_thread = threading.Thread(target=self._init_default_ocr, name="DefaultOCRInit", daemon=True)
+        self._ocr_init_thread.start()
+
+    def _init_default_ocr(self):
+        start = time.time()
+        try:
+            logger.info('start init default ocr')
+            self.ocr_lib()
+            logger.info(f'default ocr init end, cost: {time.time() - start:.2f}s')
+        except Exception as e:
+            logger.error(f'init default ocr error, cost: {time.time() - start:.2f}s', e)
+
+    def _create_ocr_lib(self, name):
+        ocr_config = self.config.get('ocr').get(name)
+        lib = ocr_config.get('lib')
+        to_download = ocr_config.get('download_models')
+        if to_download:
+            models = self.config.get('download_models').get(to_download)
+            from ok.core.downloads import download_models
+            download_models(models)
+
+        config_params = ocr_config.get('params')
+        if config_params is None:
+            config_params = {}
+        else:
+            config_params = dict(config_params)
+        if lib == 'paddleocr':
+            logger.info('use paddleocr as ocr lib')
+            from paddleocr import PaddleOCR
+            config_params['use_textline_orientation'] = False
+            config_params['use_doc_unwarping'] = False
+            config_params['use_doc_orientation_classify'] = False
+            config_params['device'] = "gpu" if is_cuda_12_or_above() else "cpu"
+            logger.info(f'init PaddleOCR with {config_params}')
+            ocr_lib = PaddleOCR(**config_params)
+            import logging
+            logging.getLogger('ppocr').setLevel(logging.ERROR)
+            config_logger(self.config)
+        elif lib == 'dgocr':
+            if config_params.get('use_dml', True):
+                config_params['use_dml'] = True
+            from dgocr import DGOCR
+            ocr_lib = DGOCR(**config_params)
+        elif lib == 'onnxocr':
+            from onnxocr.onnx_paddleocr import ONNXPaddleOcr
+            logger.info(f'init onnxocr {config_params}')
+            ocr_lib = ONNXPaddleOcr(use_angle_cls=False,
+                                    logger=logger,
+                                    use_npu=config_params.get('use_npu', True),
+                                    use_openvino=config_params.get('use_openvino', False))
+        elif lib == 'rapidocr':
+            from rapidocr import RapidOCR
+            params = {"Global.use_cls": False, "Global.max_side_len": 100000, "Global.min_side_len": 0,
+                      "EngineConfig.onnxruntime.use_dml": False}
+            params.update(config_params)
+            logger.info(f'init rapidocr {params}')
+            ocr_lib = RapidOCR(params=params)
+        else:
+            raise Exception(f'ocr lib not supported: {lib}')
+        logger.info(f'ocr_lib init {ocr_lib} {lib}')
+        return ocr_lib
 
     def nullable_frame(self):
         return self._frame
@@ -192,11 +242,18 @@ class TaskExecutor:
         return support, f"{width}x{height}"
 
     def can_capture(self):
-        return self.method is not None and self.interaction is not None and self.interaction.should_capture()
+        if self.device_manager.get_preferred_device() is None:
+            return False
+        return (self.method is not None and self.method.connected()
+                and self.interaction is not None and self.interaction.should_capture())
 
-    def next_frame(self):
+    def next_frame(self, time_out=6):
         self.reset_scene()
+        start = time.time()
         while not self.exit_event.is_set():
+            self.check_enabled()
+            if time_out is not None and time.time() - start >= time_out:
+                return None
             if self.can_capture():
                 frame = self.method.get_frame()
                 if frame is not None:
@@ -205,9 +262,15 @@ class TaskExecutor:
                         logger.warning(f"captured wrong size frame: {width}x{height}")
                     self._frame = frame
                     self._last_frame_time = time.time()
+                    if self.blur_overlay_processor:
+                        self.blur_overlay_processor.next_frame(frame)
                     return self._frame
-            self.sleep(1)
-            logger.error("got no frame!")
+            if time_out is not None and time.time() - start >= time_out:
+                return None
+            sleep_time = 1
+            if time_out is not None:
+                sleep_time = min(sleep_time, max(0, time_out - (time.time() - start)))
+            self.sleep(sleep_time)
         raise FinishedException()
 
     def is_executor_thread(self):
@@ -230,7 +293,7 @@ class TaskExecutor:
     def check_enabled(self, check_pause=True):
         if check_pause and self.paused:
             self.sleep(1)
-        if self.current_task and not self.current_task.enabled:
+        if self.current_task and not self.current_task._enabled:
             logger.info(f'{self.current_task} is disabled, raise Exception')
             self.current_task = None
             raise TaskDisabledException()
@@ -248,25 +311,29 @@ class TaskExecutor:
             time.sleep(timeout)
             return
         self.pause_end_time = time.time() + timeout
-        to_sleep = 0
         task = None
         while True:
             self.check_enabled(check_pause=False)
+            next_sleep_check = None
             if self.current_task is not None:
                 task = self.current_task
                 if task.sleep_check_interval >= 0:
-                    if not task.in_sleep_check and time.time() - task.last_sleep_check_time > task.sleep_check_interval:
+                    elapsed = time.time() - task.last_sleep_check_time
+                    if not task.in_sleep_check and elapsed >= task.sleep_check_interval:
                         task.in_sleep_check = True
                         try:
                             self.next_frame()
                             task.sleep_check()
                             self.reset_scene()
                         except Exception as e:
-                            logger.error(f"sleep_check error {task}", e)
+                            logger.info(f"sleep_check error {task}")
                             raise
                         finally:
                             task.last_sleep_check_time = time.time()
                             task.in_sleep_check = False
+                        next_sleep_check = task.sleep_check_interval
+                    elif not task.in_sleep_check:
+                        next_sleep_check = max(0, task.sleep_check_interval - elapsed)
             if self.exit_event.is_set():
                 logger.info("sleep Exit event set. Exiting early.")
                 sys.exit(0)
@@ -275,11 +342,38 @@ class TaskExecutor:
                 to_sleep = self.pause_end_time - time.time()
                 if to_sleep <= 0:
                     return
-                if to_sleep > 0.001:
-                    to_sleep = 0.001
-                time.sleep(to_sleep)
+                if next_sleep_check is not None:
+                    to_sleep = min(to_sleep, next_sleep_check)
+                self._wait_for_activity(to_sleep)
             else:
-                time.sleep(0.1)
+                self._wait_for_activity(0.1)
+
+    def _wake_executor(self):
+        condition = getattr(self, '_wake_condition', None)
+        if condition is None:
+            return
+        with condition:
+            self._wake_version += 1
+            condition.notify_all()
+
+    def _get_wake_version(self):
+        condition = getattr(self, '_wake_condition', None)
+        if condition is None:
+            return None
+        with condition:
+            return self._wake_version
+
+    def _wait_for_activity(self, timeout, wake_version=None):
+        if timeout <= 0:
+            return False
+        condition = getattr(self, '_wake_condition', None)
+        if condition is None:
+            time.sleep(timeout)
+            return False
+        with condition:
+            if wake_version is not None and wake_version != self._wake_version:
+                return True
+            return condition.wait(timeout)
 
     def pause(self, task=None):
         if task is not None:
@@ -287,6 +381,7 @@ class TaskExecutor:
                 raise Exception(f"Can only pause current task {self.current_task}")
         elif not self.paused:
             self.paused = True
+            self._wake_executor()
             communicate.executor_paused.emit(self.paused)
             self.reset_scene(check_enabled=False)
             self.pause_start = time.time()
@@ -300,12 +395,16 @@ class TaskExecutor:
     def start(self):
         with self.lock:
             if self.thread is None:
-                self.thread = threading.Thread(target=self.execute, name="TaskExecutor")
+                # Application shutdown must not be held hostage by a custom
+                # task or interaction backend that ignores exit_event.
+                self.thread = threading.Thread(
+                    target=self.execute, name="TaskExecutor", daemon=True)
                 self.thread.start()
             if self.paused:
                 self.paused = False
                 communicate.executor_paused.emit(self.paused)
                 self.pause_end_time += self.pause_start - time.time()
+            self._wake_executor()
 
     def wait_condition(self, condition, time_out=0, pre_action=None, post_action=None, settle_time=-1,
                        raise_if_not_found=False):
@@ -314,7 +413,6 @@ class TaskExecutor:
         if time_out == 0:
             time_out = self.wait_scene_timeout
         settled = 0
-        result = None
         while not self.exit_event.is_set():
             if pre_action is not None:
                 pre_action()
@@ -322,17 +420,19 @@ class TaskExecutor:
             result = condition()
             result_str = list_or_obj_to_str(result)
             if result:
-                logger.debug(
-                    f"found result {result_str} {(time.time() - start):.3f}")
                 if settle_time == -1:
                     settle_time = self.wait_until_settle_time
                 if settle_time > 0:
-                    if settled > 0 and time.time() - settled > settle_time:
+                    now = time.time()
+                    if settled > 0 and now - settled > settle_time:
+                        logger.debug(f"found result {result_str} {(now - start):.3f}")
                         return result
                     if settled == 0:
-                        settled = time.time()
+                        logger.debug(f"found result {result_str} {(now - start):.3f}")
+                        settled = now
                     continue
                 else:
+                    logger.debug(f"found result {result_str} {(time.time() - start):.3f}")
                     return result
             else:
                 settled = 0
@@ -352,10 +452,54 @@ class TaskExecutor:
         if self.scene:
             self.scene.reset()
 
+    def enqueue_onetime_task(self, task):
+        if task not in self.onetime_tasks:
+            self._wake_executor()
+            return False
+        with self.lock:
+            if task not in self.onetime_task_queue:
+                self.onetime_task_queue.append(task)
+                logger.info(f'queued onetime_task {task.name}')
+        self._wake_executor()
+        return True
+
+    def remove_onetime_task(self, task):
+        if task not in self.onetime_tasks:
+            return False
+        removed = False
+        with self.lock:
+            while task in self.onetime_task_queue:
+                self.onetime_task_queue.remove(task)
+                removed = True
+        if removed:
+            self._wake_executor()
+        return removed
+
+    def waiting_for_task(self, task):
+        if task not in self.onetime_tasks or not task.enabled or task.running:
+            return None
+        with self.lock:
+            queue = [queued_task for queued_task in self.onetime_task_queue
+                     if queued_task.enabled and not queued_task.running]
+        if task not in queue:
+            return None
+        index = queue.index(task)
+        if index > 0:
+            return queue[index - 1]
+        if self.current_task and self.current_task != task and self.current_task.running:
+            return self.current_task
+        return None
+
     def next_task(self) -> tuple:
         if self.exit_event.is_set():
             logger.error(f"next_task exit_event.is_set exit")
             return None, False, False
+        with self.lock:
+            while self.onetime_task_queue:
+                onetime_task = self.onetime_task_queue.pop(0)
+                if onetime_task.enabled:
+                    logger.info(f'get queued onetime_task {onetime_task.name}')
+                    return onetime_task, True, False
         for onetime_task in self.onetime_tasks:
             if onetime_task.enabled:
                 logger.info(f'get one enabled onetime_task {onetime_task.name}')
@@ -379,17 +523,25 @@ class TaskExecutor:
         if interval := self.basic_options.get('Trigger Interval', 1):
             self.sleep(interval / 1000)
 
+    def next_trigger_delay(self, default=1.0):
+        now = time.time()
+        delays = [
+            max(0, task.trigger_interval - (now - task.last_trigger_time))
+            for task in self.trigger_tasks
+            if task.enabled and task.trigger_interval > 0
+        ]
+        return min(delays, default=default)
+
     def execute(self):
         logger.info(f"start execute")
-        task = None
-        cycled = False
         while not self.exit_event.is_set():
             if self.paused:
                 logger.info(f'executor is paused sleep')
                 self.sleep(1)
+            wake_version = self._get_wake_version()
             task, cycled, is_trigger_task = self.next_task()
             if not task:
-                time.sleep(1)
+                self._wait_for_activity(self.next_trigger_delay(), wake_version)
                 continue
             if cycled:
                 self.reset_scene()
@@ -402,7 +554,12 @@ class TaskExecutor:
                 if not is_trigger_task:
                     communicate.task.emit(task)
                 if cycled or self._frame is None:
-                    self.next_frame()
+                    if self.next_frame(time_out=4) is None and is_trigger_task:
+                        logger.info("no frame available, skip remaining trigger tasks")
+                        self.trigger_task_index = len(self.trigger_tasks) - 1
+                        self.current_task = None
+                        task.running = False
+                        continue
                 if is_trigger_task:
                     if task.run():
                         self.trigger_task_index = -1
@@ -423,27 +580,31 @@ class TaskExecutor:
                         self.device_manager.stop_hwnd()
                         time.sleep(5)
                         communicate.quit.emit()
+                task.running = False
                 self.current_task = None
                 if not is_trigger_task:
                     communicate.task.emit(task)
-                if self.current_task is not None:
-                    self.current_task.running = False
-                    if not is_trigger_task:
-                        communicate.task.emit(self.current_task)
-                    self.current_task = None
             except TaskDisabledException:
                 logger.info(f"TaskDisabledException, continue {task}")
-                from ok import og
+                task.running = False
+                self.current_task = None
+                if not is_trigger_task:
+                    communicate.task.emit(task)
                 communicate.notification.emit('Stopped', task.name, False,
-                                              True, "start", None)
+                                              False, None, None, None)
                 continue
             except FinishedException:
                 logger.info(f"FinishedException, breaking")
+                task.running = False
+                self.current_task = None
+                if not is_trigger_task:
+                    communicate.task.emit(task)
                 break
             except Exception as e:
                 if isinstance(e, CaptureException):
                     communicate.capture_error.emit()
                 name = task.name
+                task.running = False
                 task.disable()
                 from ok import og
                 params = None
@@ -452,10 +613,9 @@ class TaskExecutor:
                     params = {"key": e.key}
                 else:
                     error = str(e)
-                communicate.notification.emit(error, name, True, True, None, params)
-                tab = "trigger" if is_trigger_task else "onetime"
-                task.info_set(QCoreApplication.tr('app', 'Error'), error)
-                logger.error(f"{name} exception", e)
+                communicate.notification.emit(error, name, True, True, None, params, None)
+                task.info_set(task._app.tr('Error'), error)
+                logger.error(f"{name} exception stopped", e)
                 if self._frame is not None:
                     communicate.screenshot.emit(self.frame, name, True, None)
                 self.current_task = None
@@ -465,17 +625,37 @@ class TaskExecutor:
     def stop(self):
         logger.info('stop')
         self.exit_event.set()
+        self._wake_executor()
 
     def destroy(self):
+        lock = getattr(self, '_destroy_lock', None)
+        if lock is None:
+            lock = self._destroy_lock = threading.Lock()
+        with lock:
+            if getattr(self, '_destroyed', False):
+                return
+            self._destroyed = True
         logger.info(f'Executor destroy')
-        for task in self.onetime_tasks:
-            task.on_destroy()
-        self.onetime_tasks = []
-        for task in self.trigger_tasks:
-            task.on_destroy()
-        self.trigger_tasks = []
+        onetime_tasks, self.onetime_tasks = self.onetime_tasks, []
+        trigger_tasks, self.trigger_tasks = self.trigger_tasks, []
+        for task in (*onetime_tasks, *trigger_tasks):
+            try:
+                task.on_destroy()
+            except Exception as error:
+                logger.error(f'task on_destroy failed for {task}: {error}')
         if self.interaction:
-            self.interaction.on_destroy()
+            try:
+                self.interaction.on_destroy()
+            except Exception as error:
+                logger.error(f'interaction on_destroy failed: {error}')
+
+    def request_destroy(self):
+        """Run cleanup away from the GUI close event when needed."""
+        if self.thread is not None and self.thread.is_alive():
+            # execute() owns normal cleanup after observing exit_event.
+            return
+        threading.Thread(
+            target=self.destroy, name="TaskExecutorCleanup", daemon=True).start()
 
     def wait_until_done(self):
         self.thread.join()
@@ -499,6 +679,7 @@ class TaskExecutor:
         for trigger_task in self.trigger_tasks:
             if isinstance(trigger_task, cls):
                 return trigger_task
+
 
 def list_or_obj_to_str(val):
     if val is not None:
