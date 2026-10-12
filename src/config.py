@@ -4,7 +4,7 @@ import numpy as np
 from ok import ConfigOption
 from src.process_feature import process_feature
 
-version = "v1.6.7"
+version = "v1.6.8"
 # 不需要修改version, Github Action打包会自动修改
 
 key_config_option = ConfigOption(
